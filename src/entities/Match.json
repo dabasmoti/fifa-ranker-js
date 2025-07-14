@@ -1,0 +1,43 @@
+{
+  "name": "Match",
+  "type": "object",
+  "properties": {
+    "team1_player1": {
+      "type": "string",
+      "description": "First player of team 1"
+    },
+    "team1_player2": {
+      "type": "string",
+      "description": "Second player of team 1"
+    },
+    "team2_player1": {
+      "type": "string",
+      "description": "First player of team 2"
+    },
+    "team2_player2": {
+      "type": "string",
+      "description": "Second player of team 2"
+    },
+    "team1_score": {
+      "type": "number",
+      "description": "Team 1 final score"
+    },
+    "team2_score": {
+      "type": "number",
+      "description": "Team 2 final score"
+    },
+    "match_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date when match was played"
+    }
+  },
+  "required": [
+    "team1_player1",
+    "team1_player2",
+    "team2_player1",
+    "team2_player2",
+    "team1_score",
+    "team2_score"
+  ]
+}

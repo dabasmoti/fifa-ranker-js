@@ -1,0 +1,17 @@
+{
+  "name": "Player",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Player's name"
+    },
+    "avatar_url": {
+      "type": "string",
+      "description": "Player's avatar image URL"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
