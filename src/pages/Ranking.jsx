@@ -10,10 +10,13 @@ import {
   Target, 
   TrendingUp,
   Grid3X3,
-  List
+  List,
+  Upload,
+  Cloud
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
+import { VercelBlobService } from "@/services/VercelBlobService.js";
 
 export default function Rankings() {
   const navigate = useNavigate();
@@ -195,11 +198,37 @@ export default function Rankings() {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Player Rankings</h1>
-        <p className="text-gray-600">Track FIFA player performance and success rates</p>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Rankings</h1>
+          <p className="text-gray-500 mt-1">
+            View player performance and overall standings.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={viewMode === 'table' ? 'secondary' : 'outline'}
+            onClick={() => setViewMode('table')}
+          >
+            <List className="w-4 h-4 mr-2" />
+            Table
+          </Button>
+          <Button
+            variant={viewMode === 'cards' ? 'secondary' : 'outline'}
+            onClick={() => setViewMode('cards')}
+          >
+            <Grid3X3 className="w-4 h-4 mr-2" />
+            Cards
+          </Button>
+        </div>
       </div>
+
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+          <strong className="font-bold">Error!</strong>
+          <span className="block sm:inline"> {error}</span>
+        </div>
+      )}
 
       {/* Statistics Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -246,15 +275,6 @@ export default function Rankings() {
         </Card>
       </div>
 
-      {/* Error Display */}
-      {error && (
-        <Card className="mb-6 bg-red-50 border-red-200">
-          <CardContent className="p-4">
-            <p className="text-red-800">{error}</p>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Leaderboard Section */}
       {players.length === 0 ? (
         <Card>
@@ -285,29 +305,6 @@ export default function Rankings() {
         </Card>
       ) : (
         <>
-          {/* View Toggle and Header */}
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Leaderboard</h2>
-            <div className="flex gap-2">
-              <Button
-                variant={viewMode === "cards" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("cards")}
-                className="p-2"
-              >
-                <Grid3X3 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === "table" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("table")}
-                className="p-2"
-              >
-                <List className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-
           {/* Render Current View */}
           {viewMode === "table" ? <TableView /> : <CardView />}
         </>

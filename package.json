@@ -10,11 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vercel/blob": "^1.1.1",
+    "@vercel/kv": "^3.0.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.378.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.23.1"
+    "react-router-dom": "^6.23.1",
+    "vercel": "^44.4.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
