@@ -1,42 +1,28 @@
-// Mock implementation for local development
-class LocalBlobMock {
-  static STORAGE_PREFIX = 'vercel-blob-mock-';
-
-  static async saveFile(filename, content) {
-    try {
-      console.log(`🔧 [LOCAL MOCK] Saving ${filename}...`);
-      localStorage.setItem(this.STORAGE_PREFIX + filename, content);
-      console.log(`✅ [LOCAL MOCK] ${filename} saved to localStorage`);
-      return { success: true, url: `mock://${filename}` };
-    } catch (error) {
-      console.error(`❌ [LOCAL MOCK] Failed to save ${filename}:`, error);
-      return { success: false, error: error.message };
+export class VercelBlobService {
+  /**
+   * Check if Vercel Blob is configured
+   */
+  static isConfigured() {
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    const configured = !!token;
+    console.log('🔍 Vercel Blob configured:', configured);
+    if (!configured) {
+      console.log('❌ BLOB_READ_WRITE_TOKEN not found. This service only works when deployed on Vercel.');
     }
+    return configured;
   }
 
-  static async loadFile(filename) {
+  /**
+   * Save file to Vercel Blob storage
+   */
+  static async saveFile(filename, content) {
     try {
-      console.log(`📥 [LOCAL MOCK] Loading ${filename}...`);
-      const content = localStorage.getItem(this.STORAGE_PREFIX + filename);
-      if (content) {
-        console.log(`✅ [LOCAL MOCK] ${filename} loaded (${content.length} chars)`);
-        return content;
-      } else {
-        console.log(`📭 [LOCAL MOCK] ${filename} not found`);
-        return null;
+      if (!this.isConfigured()) {
+        console.log('❌ Vercel Blob not configured - skipping save');
+        return { success: false, error: 'Vercel Blob not configured' };
       }
-    } catch (error) {
-      console.error(`❌ [LOCAL MOCK] Failed to load ${filename}:`, error);
-      return null;
-    }
-  }
-}
 
-// Real Vercel Blob implementation for production
-class ProductionBlobService {
-  static async saveFile(filename, content) {
-    try {
-      console.log(`🚀 [PRODUCTION] Saving ${filename} to Vercel Blob...`);
+      console.log(`🚀 Saving ${filename} to Vercel Blob...`);
       
       const { put } = await import('@vercel/blob');
       const blob = await put(filename, content, {
@@ -44,25 +30,33 @@ class ProductionBlobService {
         allowOverwrite: true
       });
 
-      console.log(`✅ [PRODUCTION] ${filename} saved to Vercel Blob`);
+      console.log(`✅ ${filename} saved to Vercel Blob successfully!`);
       console.log(`🔗 URL: ${blob.url}`);
       
       return { success: true, url: blob.url };
     } catch (error) {
-      console.error(`❌ [PRODUCTION] Failed to save ${filename}:`, error);
+      console.error(`❌ Failed to save ${filename} to Vercel Blob:`, error);
       return { success: false, error: error.message };
     }
   }
 
+  /**
+   * Load file from Vercel Blob storage
+   */
   static async loadFile(filename) {
     try {
-      console.log(`📥 [PRODUCTION] Loading ${filename} from Vercel Blob...`);
+      if (!this.isConfigured()) {
+        console.log('❌ Vercel Blob not configured - cannot load');
+        return null;
+      }
+
+      console.log(`📥 Loading ${filename} from Vercel Blob...`);
       
       const { list } = await import('@vercel/blob');
       const { blobs } = await list({ prefix: filename });
       
       if (blobs.length === 0) {
-        console.log(`📭 [PRODUCTION] ${filename} not found in Vercel Blob`);
+        console.log(`📭 ${filename} not found in Vercel Blob`);
         return null;
       }
 
@@ -74,73 +68,75 @@ class ProductionBlobService {
       }
       
       const content = await response.text();
-      console.log(`✅ [PRODUCTION] ${filename} loaded (${content.length} chars)`);
+      console.log(`✅ ${filename} loaded from Vercel Blob (${content.length} chars)`);
       
       return content;
     } catch (error) {
-      console.error(`❌ [PRODUCTION] Failed to load ${filename}:`, error);
+      console.error(`❌ Failed to load ${filename} from Vercel Blob:`, error);
       return null;
     }
   }
-}
-
-// Smart service that chooses the right implementation
-export class VercelBlobService {
-  /**
-   * Detect if we're running in production (Vercel) or development
-   */
-  static isProduction() {
-    // Check if we're in a browser environment first
-    if (typeof window === 'undefined') return false;
-    
-    // Check for Vercel deployment
-    const isVercelDomain = window.location.hostname.includes('vercel.app') || 
-                          window.location.hostname.includes('vercel.com');
-    
-    // Check for Vercel environment variable (safely)
-    const isVercelEnv = import.meta.env?.VERCEL === '1' || 
-                       import.meta.env?.VITE_VERCEL === '1';
-    
-    return isVercelDomain || isVercelEnv;
-  }
 
   /**
-   * Check if service is configured
+   * Delete file from Vercel Blob storage
    */
-  static isConfigured() {
-    if (this.isProduction()) {
-      // In production, check for the server-side token
-      const token = import.meta.env?.VITE_BLOB_READ_WRITE_TOKEN;
-      const configured = !!token;
-      console.log('🔍 [PRODUCTION] Vercel Blob configured:', configured);
-      return configured;
-    } else {
-      console.log('🔧 [DEVELOPMENT] Using local blob mock (always configured)');
-      return true; // Local mock is always "configured"
+  static async deleteFile(filename) {
+    try {
+      if (!this.isConfigured()) {
+        console.log('❌ Vercel Blob not configured - cannot delete');
+        return false;
+      }
+
+      console.log(`🗑️ Deleting ${filename} from Vercel Blob...`);
+      
+      const { list, del } = await import('@vercel/blob');
+      const { blobs } = await list({ prefix: filename });
+      
+      if (blobs.length === 0) {
+        console.log(`📭 ${filename} not found in Vercel Blob`);
+        return true; // Already deleted
+      }
+
+      // Delete all matching blobs
+      for (const blob of blobs) {
+        await del(blob.url);
+      }
+      
+      console.log(`✅ ${filename} deleted from Vercel Blob`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to delete ${filename} from Vercel Blob:`, error);
+      return false;
     }
   }
 
   /**
-   * Get the appropriate service implementation
+   * List all files in Vercel Blob storage
    */
-  static getService() {
-    return this.isProduction() ? ProductionBlobService : LocalBlobMock;
-  }
+  static async listFiles() {
+    try {
+      if (!this.isConfigured()) {
+        console.log('❌ Vercel Blob not configured - cannot list');
+        return [];
+      }
 
-  /**
-   * Save file using the appropriate service
-   */
-  static async saveFile(filename, content) {
-    const service = this.getService();
-    return await service.saveFile(filename, content);
-  }
-
-  /**
-   * Load file using the appropriate service
-   */
-  static async loadFile(filename) {
-    const service = this.getService();
-    return await service.loadFile(filename);
+      console.log('📋 Listing files in Vercel Blob...');
+      
+      const { list } = await import('@vercel/blob');
+      const { blobs } = await list({ prefix: 'fifa-' });
+      
+      console.log(`✅ Found ${blobs.length} files in Vercel Blob`);
+      
+      return blobs.map(blob => ({
+        filename: blob.pathname,
+        url: blob.url,
+        size: blob.size,
+        uploadedAt: blob.uploadedAt
+      }));
+    } catch (error) {
+      console.error('❌ Failed to list files in Vercel Blob:', error);
+      return [];
+    }
   }
 
   /**
@@ -186,22 +182,27 @@ export class VercelBlobService {
   }
 
   /**
-   * Sync all data
+   * Sync all data to Vercel Blob
    */
   static async syncAll() {
     try {
+      if (!this.isConfigured()) {
+        console.log('❌ Vercel Blob not configured - sync skipped');
+        return { players: false, matches: false, leagues: false };
+      }
+
       const results = {
         players: false,
         matches: false,
         leagues: false
       };
 
+      // Get current CSV data from localStorage (temporary until blob is available)
       const playersData = localStorage.getItem('fifa-csv-players.csv');
       const matchesData = localStorage.getItem('fifa-csv-matches.csv');
       const leaguesData = localStorage.getItem('fifa-csv-leagues.csv');
 
-      const env = this.isProduction() ? 'PRODUCTION' : 'DEVELOPMENT';
-      console.log(`💾 [${env}] Syncing data:`, {
+      console.log('💾 Syncing data to Vercel Blob:', {
         hasPlayers: !!playersData,
         hasMatches: !!matchesData,
         hasLeagues: !!leaguesData
@@ -222,7 +223,7 @@ export class VercelBlobService {
         results.leagues = result?.success || false;
       }
 
-      console.log(`🔄 [${env}] Sync results:`, results);
+      console.log('🔄 Sync results:', results);
       return results;
       
     } catch (error) {

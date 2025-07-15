@@ -1,8 +1,6 @@
 import { VercelBlobService } from './VercelBlobService.js';
 
 export class CsvService {
-  static DATA_DIR = '/data';
-  
   /**
    * Convert array of objects to CSV string
    */
@@ -95,125 +93,75 @@ export class CsvService {
   }
 
   /**
-   * Read CSV data from localStorage (and try Vercel Blob if available)
+   * Read CSV data from Vercel Blob storage only
    */
   static async readCsv(filename, headers) {
     try {
-      const storageKey = `fifa-csv-${filename}`;
+      if (!VercelBlobService.isConfigured()) {
+        console.log(`❌ Vercel Blob not configured - cannot load ${filename}`);
+        return [];
+      }
+
+      console.log(`📥 Loading ${filename} from Vercel Blob...`);
+      
       let csvString = null;
-      
-      // Always try to load from Vercel Blob first if configured
-      if (VercelBlobService.isConfigured()) {
-        try {
-          console.log(`Attempting to load ${filename} from Vercel Blob...`);
-          if (filename === 'players.csv') {
-            csvString = await VercelBlobService.loadPlayers();
-          } else if (filename === 'matches.csv') {
-            csvString = await VercelBlobService.loadMatches();
-          } else if (filename === 'leagues.csv') {
-            csvString = await VercelBlobService.loadLeagues();
-          }
-          
-          if (csvString) {
-            console.log(`✅ Loaded ${filename} from Vercel Blob, updating local cache.`);
-            localStorage.setItem(storageKey, csvString);
-          } else {
-            console.log(`No data for ${filename} in Vercel Blob.`);
-          }
-        } catch (error) {
-          console.warn(`Could not load ${filename} from Vercel Blob:`, error.message);
-        }
-      } else {
-        console.log(`Vercel Blob not configured, skipping cloud load for ${filename}`);
-      }
-      
-      // If Vercel Blob failed or wasn't configured, try localStorage as a fallback
-      if (!csvString) {
-        console.log(`Falling back to localStorage for ${filename}.`);
-        csvString = localStorage.getItem(storageKey);
+      if (filename === 'players.csv') {
+        csvString = await VercelBlobService.loadPlayers();
+      } else if (filename === 'matches.csv') {
+        csvString = await VercelBlobService.loadMatches();
+      } else if (filename === 'leagues.csv') {
+        csvString = await VercelBlobService.loadLeagues();
       }
       
       if (!csvString) {
-        console.log(`No data found for ${filename} in Vercel Blob or localStorage.`);
+        console.log(`📭 No data found for ${filename} in Vercel Blob`);
         return [];
       }
       
+      console.log(`✅ Loaded ${filename} from Vercel Blob (${csvString.length} chars)`);
       return this.csvToObjects(csvString, headers);
+      
     } catch (error) {
-      console.error(`Error reading CSV file ${filename}:`, error);
+      console.error(`❌ Error reading CSV file ${filename} from Vercel Blob:`, error);
       return [];
     }
   }
   
   /**
-   * Write CSV data to localStorage and Vercel Blob
+   * Write CSV data to Vercel Blob storage only
    */
   static async writeCsv(filename, objects, headers) {
     try {
+      if (!VercelBlobService.isConfigured()) {
+        console.log(`❌ Vercel Blob not configured - cannot save ${filename}`);
+        throw new Error('Vercel Blob not configured. This app only works when deployed on Vercel.');
+      }
+
       const csvString = this.objectsToCsv(objects, headers);
+      console.log(`💾 Saving ${filename} to Vercel Blob...`);
       
-      // Save to localStorage
-      const storageKey = `fifa-csv-${filename}`;
-      localStorage.setItem(storageKey, csvString);
-      
-      // Save to Vercel Blob if configured
-      if (VercelBlobService.isConfigured()) {
-        try {
-          if (filename === 'players.csv') {
-            await VercelBlobService.savePlayers(csvString);
-            console.log(`✅ Automatically saved players to Vercel Blob`);
-          } else if (filename === 'matches.csv') {
-            await VercelBlobService.saveMatches(csvString);
-            console.log(`✅ Automatically saved matches to Vercel Blob`);
-          } else if (filename === 'leagues.csv') {
-            await VercelBlobService.saveLeagues(csvString);
-            console.log(`✅ Automatically saved leagues to Vercel Blob`);
-          }
-        } catch (error) {
-          console.warn(`Failed to save ${filename} to Vercel Blob:`, error.message);
-          // Don't throw error, localStorage backup exists
-        }
-      } else {
-        console.log(`Vercel Blob not configured, skipping cloud save for ${filename}`);
+      let result;
+      if (filename === 'players.csv') {
+        result = await VercelBlobService.savePlayers(csvString);
+      } else if (filename === 'matches.csv') {
+        result = await VercelBlobService.saveMatches(csvString);
+      } else if (filename === 'leagues.csv') {
+        result = await VercelBlobService.saveLeagues(csvString);
       }
       
-      // Also create a downloadable backup
-      this.createDownloadableBackup(filename, csvString);
+      if (!result?.success) {
+        throw new Error(`Failed to save ${filename} to Vercel Blob: ${result?.error || 'Unknown error'}`);
+      }
       
+      console.log(`✅ Successfully saved ${filename} to Vercel Blob`);
       return true;
+      
     } catch (error) {
-      console.error(`Error writing CSV file ${filename}:`, error);
+      console.error(`❌ Error writing CSV file ${filename} to Vercel Blob:`, error);
       throw error;
     }
   }
   
-  /**
-   * Create a downloadable backup of the CSV data
-   */
-  static createDownloadableBackup(filename, csvString) {
-    try {
-      // Store backup with timestamp
-      const timestamp = new Date().toISOString();
-      const backupKey = `fifa-backup-${filename}-${timestamp}`;
-      localStorage.setItem(backupKey, csvString);
-      
-      // Keep only last 5 backups per file
-      const allKeys = Object.keys(localStorage);
-      const backupKeys = allKeys
-        .filter(key => key.startsWith(`fifa-backup-${filename}-`))
-        .sort()
-        .reverse();
-        
-      // Remove old backups (keep only 5 most recent)
-      backupKeys.slice(5).forEach(key => {
-        localStorage.removeItem(key);
-      });
-      
-    } catch (error) {
-      console.warn(`Could not create backup for ${filename}:`, error);
-    }
-  }
-
   /**
    * Download CSV file to user's computer
    */
@@ -264,47 +212,36 @@ export class CsvService {
   }
 
   /**
-   * Get list of available backups for a file
+   * Get all available files in Vercel Blob storage
    */
-  static getBackupList(filename) {
+  static async listFiles() {
     try {
-      const allKeys = Object.keys(localStorage);
-      const backupKeys = allKeys
-        .filter(key => key.startsWith(`fifa-backup-${filename}-`))
-        .sort()
-        .reverse();
-        
-      return backupKeys.map(key => {
-        const timestamp = key.replace(`fifa-backup-${filename}-`, '');
-        return {
-          key,
-          timestamp,
-          date: new Date(timestamp)
-        };
-      });
+      if (!VercelBlobService.isConfigured()) {
+        console.log('❌ Vercel Blob not configured - cannot list files');
+        return [];
+      }
+      
+      return await VercelBlobService.listFiles();
     } catch (error) {
-      console.error(`Error getting backup list for ${filename}:`, error);
+      console.error('❌ Error listing files from Vercel Blob:', error);
       return [];
     }
   }
 
   /**
-   * Restore data from a backup
+   * Delete a CSV file from Vercel Blob storage
    */
-  static async restoreFromBackup(filename, backupKey) {
+  static async deleteFile(filename) {
     try {
-      const backupData = localStorage.getItem(backupKey);
-      if (!backupData) {
-        throw new Error('Backup not found');
+      if (!VercelBlobService.isConfigured()) {
+        console.log(`❌ Vercel Blob not configured - cannot delete ${filename}`);
+        return false;
       }
       
-      const storageKey = `fifa-csv-${filename}`;
-      localStorage.setItem(storageKey, backupData);
-      
-      return true;
+      return await VercelBlobService.deleteFile(filename);
     } catch (error) {
-      console.error(`Error restoring from backup:`, error);
-      throw error;
+      console.error(`❌ Error deleting file ${filename} from Vercel Blob:`, error);
+      return false;
     }
   }
 } 
