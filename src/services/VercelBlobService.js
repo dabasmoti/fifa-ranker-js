@@ -1,234 +1,307 @@
-export class VercelBlobService {
-  /**
-   * Check if Vercel Blob is configured
-   */
-  static isConfigured() {
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    const configured = !!token;
-    console.log('🔍 Vercel Blob configured:', configured);
-    if (!configured) {
-      console.log('❌ BLOB_READ_WRITE_TOKEN not found. This service only works when deployed on Vercel.');
-    }
-    return configured;
+/**
+ * Service for managing file storage using Vercel Blob via API routes
+ * Handles JSON data storage for cleaner data management
+ */
+class VercelBlobService {
+  constructor() {
+    // Use API routes to avoid CORS issues
+    this.apiBase = '/api/blob';
   }
 
   /**
-   * Save file to Vercel Blob storage
+   * Save JSON data to Vercel Blob storage
+   * @param {string} filename - Name of the file (e.g., 'fifa-players.json')
+   * @param {Object|Array} data - Data to save as JSON
+   * @returns {Promise<Object>} Blob object with URL
    */
-  static async saveFile(filename, content) {
+  async saveFile(filename, data) {
     try {
-      if (!this.isConfigured()) {
-        console.log('❌ Vercel Blob not configured - skipping save');
-        return { success: false, error: 'Vercel Blob not configured' };
-      }
-
-      console.log(`🚀 Saving ${filename} to Vercel Blob...`);
+      console.log(`📤 Uploading ${filename} to Vercel Blob...`);
       
-      const { put } = await import('@vercel/blob');
-      const blob = await put(filename, content, {
-        access: 'public',
-        allowOverwrite: true
+      const jsonData = JSON.stringify(data, null, 2);
+      
+      const response = await fetch(this.apiBase, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
+        body: JSON.stringify({
+          action: 'upload',
+          filename: filename,
+          data: jsonData,
+          _t: Date.now() // Add timestamp to prevent caching
+        })
       });
 
-      console.log(`✅ ${filename} saved to Vercel Blob successfully!`);
-      console.log(`🔗 URL: ${blob.url}`);
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const blob = await response.json();
+      console.log(`✅ Successfully uploaded ${filename}:`, blob.url);
+      return blob;
       
-      return { success: true, url: blob.url };
     } catch (error) {
-      console.error(`❌ Failed to save ${filename} to Vercel Blob:`, error);
-      return { success: false, error: error.message };
+      console.error(`❌ Failed to upload ${filename}:`, error);
+      
+      // Provide helpful error messages
+      if (error.message.includes('token') || error.message.includes('Unauthorized')) {
+        throw new Error(`Vercel Blob token not configured. Configure BLOB_READ_WRITE_TOKEN in your Vercel project.`);
+      }
+      
+      if (error.message.includes('404') || error.message.includes('Not Found')) {
+        throw new Error(`API route not found. Make sure the api/blob.js file exists and is properly configured.`);
+      }
+      
+      throw new Error(`Failed to save ${filename}: ${error.message}`);
     }
   }
 
   /**
-   * Load file from Vercel Blob storage
+   * Load JSON data from Vercel Blob storage
+   * @param {string} filename - Name of the file to load
+   * @returns {Promise<Object|Array>} Parsed JSON data or null if file doesn't exist
    */
-  static async loadFile(filename) {
+  async loadFile(filename) {
     try {
-      if (!this.isConfigured()) {
-        console.log('❌ Vercel Blob not configured - cannot load');
-        return null;
-      }
-
       console.log(`📥 Loading ${filename} from Vercel Blob...`);
       
-      const { list } = await import('@vercel/blob');
-      const { blobs } = await list({ prefix: filename });
+      const response = await fetch(this.apiBase, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
+        body: JSON.stringify({
+          action: 'list',
+          filename: filename,
+          _t: Date.now() // Add timestamp to prevent caching
+        })
+      });
       
-      if (blobs.length === 0) {
-        console.log(`📭 ${filename} not found in Vercel Blob`);
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          errorMessage = response.statusText || errorMessage;
+        }
+        
+        // If API route not found, return null (file doesn't exist)
+        if (response.status === 404) {
+          console.log(`📄 API route not found - returning empty data for ${filename}`);
+          return null;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      let responseData;
+      try {
+        responseData = await response.json();
+      } catch (e) {
+        console.error(`❌ Failed to parse response as JSON for ${filename}:`, e);
         return null;
       }
 
-      const blob = blobs[0];
-      const response = await fetch(blob.url);
+      const { blobs } = responseData;
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${filename}: ${response.statusText}`);
+      if (!blobs || !Array.isArray(blobs)) {
+        console.log(`📄 Invalid blobs response for ${filename}`);
+        return null;
       }
       
-      const content = await response.text();
-      console.log(`✅ ${filename} loaded from Vercel Blob (${content.length} chars)`);
+      const blob = blobs.find(b => b.pathname === filename);
       
-      return content;
+      if (!blob) {
+        console.log(`📄 File ${filename} not found in Vercel Blob`);
+        return null;
+      }
+      
+      // Fetch the actual content through API route to avoid CORS issues
+      try {
+        const contentResponse = await fetch(this.apiBase, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          },
+          body: JSON.stringify({
+            action: 'download',
+            filename: filename,
+            _t: Date.now() // Add timestamp to prevent caching
+          })
+        });
+        
+        if (!contentResponse.ok) {
+          console.log(`📄 Failed to fetch content for ${filename}: ${contentResponse.statusText}`);
+          return null;
+        }
+        
+        const jsonText = await contentResponse.text();
+        
+        // Handle empty content
+        if (!jsonText || jsonText.trim() === '') {
+          console.log(`📄 Empty content for ${filename}`);
+          return null;
+        }
+        
+        // Parse JSON data
+        let jsonData;
+        try {
+          jsonData = JSON.parse(jsonText);
+        } catch (parseError) {
+          console.error(`❌ Failed to parse JSON from ${filename}:`, parseError);
+          console.log(`Raw content: ${jsonText.substring(0, 200)}...`);
+          return null;
+        }
+        
+        console.log(`✅ Successfully loaded ${filename} with ${Array.isArray(jsonData) ? jsonData.length + ' records' : 'data'}`);
+        
+        return jsonData;
+        
+      } catch (fetchError) {
+        console.error(`❌ Failed to fetch content for ${filename}:`, fetchError);
+        return null;
+      }
+      
     } catch (error) {
-      console.error(`❌ Failed to load ${filename} from Vercel Blob:`, error);
+      console.error(`❌ Failed to load ${filename}:`, error);
+      
+      // For any error, return null instead of throwing
+      // This allows the app to continue with empty data
       return null;
     }
   }
 
   /**
-   * Delete file from Vercel Blob storage
+   * Delete a file from Vercel Blob storage
+   * @param {string} filename - Name of the file to delete
+   * @returns {Promise<boolean>} Success status
    */
-  static async deleteFile(filename) {
+  async deleteFile(filename) {
     try {
-      if (!this.isConfigured()) {
-        console.log('❌ Vercel Blob not configured - cannot delete');
-        return false;
-      }
-
       console.log(`🗑️ Deleting ${filename} from Vercel Blob...`);
       
-      const { list, del } = await import('@vercel/blob');
-      const { blobs } = await list({ prefix: filename });
-      
-      if (blobs.length === 0) {
-        console.log(`📭 ${filename} not found in Vercel Blob`);
-        return true; // Already deleted
+      const response = await fetch(this.apiBase, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          filename: filename
+        })
+      });
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
-      // Delete all matching blobs
-      for (const blob of blobs) {
-        await del(blob.url);
-      }
-      
-      console.log(`✅ ${filename} deleted from Vercel Blob`);
+      console.log(`✅ Successfully deleted ${filename}`);
       return true;
+      
     } catch (error) {
-      console.error(`❌ Failed to delete ${filename} from Vercel Blob:`, error);
+      console.error(`❌ Failed to delete ${filename}:`, error);
+      
+      // Don't throw on delete errors - just return false
       return false;
     }
   }
 
   /**
-   * List all files in Vercel Blob storage
+   * Check if Vercel Blob service is available
+   * @returns {boolean} True if service is configured and available
    */
-  static async listFiles() {
+  static isAvailable() {
+    // In browser environment, always return true
+    // Let the actual API calls handle availability checks
+    return true;
+  }
+
+  /**
+   * List all files in the blob store
+   * @returns {Promise<Array>} Array of blob objects
+   */
+  async listFiles() {
     try {
-      if (!this.isConfigured()) {
-        console.log('❌ Vercel Blob not configured - cannot list');
+      console.log('📋 Listing files in Vercel Blob...');
+      
+      const response = await fetch(this.apiBase, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
+        body: JSON.stringify({
+          action: 'list',
+          _t: Date.now() // Add timestamp to prevent caching
+        })
+      });
+      
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch (e) {
+          errorMessage = response.statusText || errorMessage;
+        }
+        
+        // If API not available, return empty array
+        if (response.status === 404) {
+          console.log('📋 API route not found - returning empty file list');
+          return [];
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      let responseData;
+      try {
+        responseData = await response.json();
+      } catch (e) {
+        console.error('❌ Failed to parse list response as JSON:', e);
         return [];
       }
 
-      console.log('📋 Listing files in Vercel Blob...');
+      const { blobs } = responseData;
+      const blobArray = Array.isArray(blobs) ? blobs : [];
       
-      const { list } = await import('@vercel/blob');
-      const { blobs } = await list({ prefix: 'fifa-' });
+      console.log(`✅ Found ${blobArray.length} files in Vercel Blob`);
+      return blobArray;
       
-      console.log(`✅ Found ${blobs.length} files in Vercel Blob`);
-      
-      return blobs.map(blob => ({
-        filename: blob.pathname,
-        url: blob.url,
-        size: blob.size,
-        uploadedAt: blob.uploadedAt
-      }));
     } catch (error) {
-      console.error('❌ Failed to list files in Vercel Blob:', error);
+      console.error('❌ Failed to list files:', error);
+      
+      // Return empty array instead of throwing
       return [];
     }
   }
+}
 
-  /**
-   * Save players CSV
-   */
-  static async savePlayers(csvContent) {
-    return await this.saveFile('fifa-players.csv', csvContent);
-  }
-
-  /**
-   * Load players CSV
-   */
-  static async loadPlayers() {
-    return await this.loadFile('fifa-players.csv');
-  }
-
-  /**
-   * Save matches CSV
-   */
-  static async saveMatches(csvContent) {
-    return await this.saveFile('fifa-matches.csv', csvContent);
-  }
-
-  /**
-   * Load matches CSV
-   */
-  static async loadMatches() {
-    return await this.loadFile('fifa-matches.csv');
-  }
-
-  /**
-   * Save leagues CSV
-   */
-  static async saveLeagues(csvContent) {
-    return await this.saveFile('fifa-leagues.csv', csvContent);
-  }
-
-  /**
-   * Load leagues CSV
-   */
-  static async loadLeagues() {
-    return await this.loadFile('fifa-leagues.csv');
-  }
-
-  /**
-   * Sync all data to Vercel Blob
-   */
-  static async syncAll() {
-    try {
-      if (!this.isConfigured()) {
-        console.log('❌ Vercel Blob not configured - sync skipped');
-        return { players: false, matches: false, leagues: false };
-      }
-
-      const results = {
-        players: false,
-        matches: false,
-        leagues: false
-      };
-
-      // Get current CSV data from localStorage (temporary until blob is available)
-      const playersData = localStorage.getItem('fifa-csv-players.csv');
-      const matchesData = localStorage.getItem('fifa-csv-matches.csv');
-      const leaguesData = localStorage.getItem('fifa-csv-leagues.csv');
-
-      console.log('💾 Syncing data to Vercel Blob:', {
-        hasPlayers: !!playersData,
-        hasMatches: !!matchesData,
-        hasLeagues: !!leaguesData
-      });
-
-      if (playersData) {
-        const result = await this.savePlayers(playersData);
-        results.players = result?.success || false;
-      }
-
-      if (matchesData) {
-        const result = await this.saveMatches(matchesData);
-        results.matches = result?.success || false;
-      }
-
-      if (leaguesData) {
-        const result = await this.saveLeagues(leaguesData);
-        results.leagues = result?.success || false;
-      }
-
-      console.log('🔄 Sync results:', results);
-      return results;
-      
-    } catch (error) {
-      console.error('❌ Failed to sync all data:', error);
-      return { players: false, matches: false, leagues: false };
-    }
-  }
-} 
+export default VercelBlobService; 

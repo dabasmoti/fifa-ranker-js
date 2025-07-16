@@ -1,11 +1,12 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '@/Layout.jsx';
-import SimpleGitHubSettings from '@/pages/SimpleGitHubSettings.jsx';
+
 import Players from '@/pages/Players.jsx';
 import AddMatch from '@/pages/AddMatch.jsx';
 import Matches from '@/pages/Matches.jsx';
 import Rankings from '@/pages/Ranking.jsx';
+import SyncManagement from '@/pages/SyncManagement.jsx';
 import { createPageUrl } from '@/utils/createPageUrl.js';
 
 // Simple test components that we know work
@@ -22,18 +23,18 @@ const TestLeagues = () => (
 );
 
 function App() {
-  console.log('App with working GitHub Settings');
+  console.log('App without GitHub Settings');
   
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Navigate to={createPageUrl('GitHubSettings')} replace />} />
+        <Route path="/" element={<Navigate to={createPageUrl('Players')} replace />} />
         <Route path={createPageUrl('Rankings')} element={<Rankings />} />
         <Route path={createPageUrl('Players')} element={<Players />} />
         <Route path={createPageUrl('Matches')} element={<Matches />} />
         <Route path={createPageUrl('AddMatch')} element={<AddMatch />} />
         <Route path={createPageUrl('Leagues')} element={<TestLeagues />} />
-        <Route path={createPageUrl('GitHubSettings')} element={<SimpleGitHubSettings />} />
+        <Route path={createPageUrl('Sync')} element={<SyncManagement />} />
       </Routes>
     </Layout>
   );

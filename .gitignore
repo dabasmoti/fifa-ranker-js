@@ -167,3 +167,5 @@ firestore-debug.log
 
 # Local development
 *.local 
+.vercel
+.env*.local

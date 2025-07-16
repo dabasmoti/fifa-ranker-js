@@ -1,51 +1,60 @@
-import { VercelBlobService } from './VercelBlobService.js';
+import VercelBlobService from './VercelBlobService.js';
 
-export class CsvService {
+/**
+ * Service for handling CSV operations with automatic Vercel Blob sync
+ * Handles both local development and production environments
+ */
+class CsvService {
+  constructor() {
+    this.filenames = {
+      players: 'fifa-players.csv',
+      matches: 'fifa-matches.csv', 
+      leagues: 'fifa-leagues.csv'
+    };
+  }
+
   /**
    * Convert array of objects to CSV string
    */
-  static objectsToCsv(objects, headers) {
-    if (!objects || objects.length === 0) {
+  arrayToCSV(data, headers) {
+    if (!data || data.length === 0) {
       return headers.join(',') + '\n';
     }
+
+    const csvRows = [headers.join(',')];
     
-    const csvRows = [];
-    csvRows.push(headers.join(','));
-    
-    objects.forEach(obj => {
-      const row = headers.map(header => {
-        const value = obj[header] || '';
-        // Escape commas and quotes in CSV values
+    for (const row of data) {
+      const values = headers.map(header => {
+        const value = row[header] || '';
+        // Escape quotes and wrap in quotes if contains comma, quote, or newline
         if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
           return `"${value.replace(/"/g, '""')}"`;
         }
         return value;
       });
-      csvRows.push(row.join(','));
-    });
+      csvRows.push(values.join(','));
+    }
     
-    return csvRows.join('\n') + '\n';
+    return csvRows.join('\n');
   }
 
   /**
-   * Convert CSV string to array of objects
+   * Parse CSV string to array of objects
    */
-  static csvToObjects(csvString, headers) {
-    if (!csvString || csvString.trim() === '') {
+  csvToArray(csvData, headers) {
+    if (!csvData || csvData.trim() === '') {
       return [];
     }
+
+    const lines = csvData.trim().split('\n');
     
-    const lines = csvString.trim().split('\n');
-    
-    if (lines.length === 0) {
-      return [];
-    }
-    
-    // Skip header row (first line)
-    const dataLines = lines.slice(1);
-    
+    // Skip header row if it exists
+    const dataLines = lines.length > 1 && lines[0] === headers.join(',') 
+      ? lines.slice(1) 
+      : lines;
+
     return dataLines.map(line => {
-      const values = this.parseCsvLine(line);
+      const values = this.parseCSVLine(line);
       const obj = {};
       
       headers.forEach((header, index) => {
@@ -57,10 +66,10 @@ export class CsvService {
   }
 
   /**
-   * Parse a single CSV line, handling quoted values
+   * Parse a single CSV line handling quoted values
    */
-  static parseCsvLine(line) {
-    const result = [];
+  parseCSVLine(line) {
+    const values = [];
     let current = '';
     let inQuotes = false;
     
@@ -70,104 +79,254 @@ export class CsvService {
       
       if (char === '"') {
         if (inQuotes && nextChar === '"') {
-          // Escaped quote
           current += '"';
           i++; // Skip next quote
         } else {
-          // Toggle quote state
           inQuotes = !inQuotes;
         }
       } else if (char === ',' && !inQuotes) {
-        // End of field
-        result.push(current);
+        values.push(current);
         current = '';
       } else {
         current += char;
       }
     }
     
-    // Add last field
-    result.push(current);
-    
-    return result;
+    values.push(current);
+    return values;
   }
 
   /**
-   * Read CSV data from Vercel Blob storage only
+   * Save data to Vercel Blob with automatic sync
    */
-  static async readCsv(filename, headers) {
+  async saveToBlob(type, data, headers) {
     try {
-      if (!VercelBlobService.isConfigured()) {
-        console.log(`❌ Vercel Blob not configured - cannot load ${filename}`);
+      const filename = this.filenames[type];
+      if (!filename) {
+        throw new Error(`Unknown data type: ${type}`);
+      }
+
+      // Check if Vercel Blob is available
+      if (!VercelBlobService.isAvailable()) {
+        console.warn(`⚠️ Vercel Blob not available - cannot save ${filename}`);
+        return { success: false, error: 'Vercel Blob not configured' };
+      }
+
+      // Convert data to CSV
+      const csvData = this.arrayToCSV(data, headers);
+      
+      // Save to Vercel Blob
+      const blob = await VercelBlobService.saveFile(filename, csvData);
+      
+      console.log(`✅ ${type} data saved to Vercel Blob`);
+      return { success: true, url: blob.url };
+      
+    } catch (error) {
+      console.error(`❌ Failed to save ${type} to Vercel Blob:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Load data from Vercel Blob
+   */
+  async loadFromBlob(type, headers) {
+    try {
+      const filename = this.filenames[type];
+      if (!filename) {
+        throw new Error(`Unknown data type: ${type}`);
+      }
+
+      // Check if Vercel Blob is available
+      if (!VercelBlobService.isAvailable()) {
+        console.warn(`⚠️ Vercel Blob not available - cannot load ${filename}`);
         return [];
       }
 
-      console.log(`📥 Loading ${filename} from Vercel Blob...`);
+      // Load from Vercel Blob
+      const csvData = await VercelBlobService.loadFile(filename);
       
-      let csvString = null;
-      if (filename === 'players.csv') {
-        csvString = await VercelBlobService.loadPlayers();
-      } else if (filename === 'matches.csv') {
-        csvString = await VercelBlobService.loadMatches();
-      } else if (filename === 'leagues.csv') {
-        csvString = await VercelBlobService.loadLeagues();
-      }
-      
-      if (!csvString) {
-        console.log(`📭 No data found for ${filename} in Vercel Blob`);
+      if (!csvData) {
+        console.log(`📭 No ${type} data found in Vercel Blob`);
         return [];
       }
+
+      // Parse CSV data
+      const data = this.csvToArray(csvData, headers);
+      console.log(`✅ Loaded ${data.length} ${type} records from Vercel Blob`);
       
-      console.log(`✅ Loaded ${filename} from Vercel Blob (${csvString.length} chars)`);
-      return this.csvToObjects(csvString, headers);
+      return data;
       
     } catch (error) {
-      console.error(`❌ Error reading CSV file ${filename} from Vercel Blob:`, error);
+      console.error(`❌ Failed to load ${type} from Vercel Blob:`, error);
       return [];
     }
   }
-  
+
   /**
-   * Write CSV data to Vercel Blob storage only
+   * Save players data
    */
-  static async writeCsv(filename, objects, headers) {
+  async savePlayers(players) {
+    const headers = ['id', 'name', 'rating', 'position', 'nationality', 'club'];
+    return await this.saveToBlob('players', players, headers);
+  }
+
+  /**
+   * Load players data
+   */
+  async loadPlayers() {
+    const headers = ['id', 'name', 'rating', 'position', 'nationality', 'club'];
+    return await this.loadFromBlob('players', headers);
+  }
+
+  /**
+   * Save matches data with automatic blob sync
+   */
+  async saveMatches(matches) {
+    const headers = ['id', 'date', 'homeTeam', 'awayTeam', 'homeScore', 'awayScore', 'result', 'leagueId'];
+    return await this.saveToBlob('matches', matches, headers);
+  }
+
+  /**
+   * Load matches data
+   */
+  async loadMatches() {
+    const headers = ['id', 'date', 'homeTeam', 'awayTeam', 'homeScore', 'awayScore', 'result', 'leagueId'];
+    return await this.loadFromBlob('matches', headers);
+  }
+
+  /**
+   * Save leagues data
+   */
+  async saveLeagues(leagues) {
+    const headers = ['id', 'name', 'country', 'season'];
+    return await this.saveToBlob('leagues', leagues, headers);
+  }
+
+  /**
+   * Load leagues data
+   */
+  async loadLeagues() {
+    const headers = ['id', 'name', 'country', 'season'];
+    return await this.loadFromBlob('leagues', headers);
+  }
+
+  /**
+   * Get service status
+   */
+  getStatus() {
+    return VercelBlobService.getStatus();
+  }
+
+  /**
+   * Sync all data to Vercel Blob
+   */
+  async syncAll(data) {
     try {
-      if (!VercelBlobService.isConfigured()) {
-        console.log(`❌ Vercel Blob not configured - cannot save ${filename}`);
-        throw new Error('Vercel Blob not configured. This app only works when deployed on Vercel.');
+      console.log('🔄 Starting data sync to Vercel Blob...');
+      
+      const results = {
+        players: { success: false },
+        matches: { success: false },
+        leagues: { success: false }
+      };
+
+      // Save players
+      if (data.players && data.players.length > 0) {
+        results.players = await this.savePlayers(data.players);
       }
 
-      const csvString = this.objectsToCsv(objects, headers);
-      console.log(`💾 Saving ${filename} to Vercel Blob...`);
-      
-      let result;
-      if (filename === 'players.csv') {
-        result = await VercelBlobService.savePlayers(csvString);
-      } else if (filename === 'matches.csv') {
-        result = await VercelBlobService.saveMatches(csvString);
-      } else if (filename === 'leagues.csv') {
-        result = await VercelBlobService.saveLeagues(csvString);
+      // Save matches  
+      if (data.matches && data.matches.length > 0) {
+        results.matches = await this.saveMatches(data.matches);
       }
-      
-      if (!result?.success) {
-        throw new Error(`Failed to save ${filename} to Vercel Blob: ${result?.error || 'Unknown error'}`);
+
+      // Save leagues
+      if (data.leagues && data.leagues.length > 0) {
+        results.leagues = await this.saveLeagues(data.leagues);
       }
+
+      const successCount = Object.values(results).filter(r => r.success).length;
+      console.log(`✅ Sync completed: ${successCount}/3 files synced successfully`);
       
-      console.log(`✅ Successfully saved ${filename} to Vercel Blob`);
-      return true;
+      return results;
       
     } catch (error) {
-      console.error(`❌ Error writing CSV file ${filename} to Vercel Blob:`, error);
-      throw error;
+      console.error('❌ Failed to sync data:', error);
+      return {
+        players: { success: false, error: error.message },
+        matches: { success: false, error: error.message },
+        leagues: { success: false, error: error.message }
+      };
     }
   }
+
+  /**
+   * Load all data from Vercel Blob
+   */
+  async loadAll() {
+    try {
+      console.log('📥 Loading all data from Vercel Blob...');
+      
+      const [players, matches, leagues] = await Promise.all([
+        this.loadPlayers(),
+        this.loadMatches(), 
+        this.loadLeagues()
+      ]);
+
+      console.log(`✅ Loaded data: ${players.length} players, ${matches.length} matches, ${leagues.length} leagues`);
+      
+      return { players, matches, leagues };
+      
+    } catch (error) {
+      console.error('❌ Failed to load data:', error);
+      return { players: [], matches: [], leagues: [] };
+    }
+  }
+
+  // Compatibility methods for existing entity classes
   
   /**
-   * Download CSV file to user's computer
+   * Read CSV data (compatibility method)
    */
-  static downloadCsv(filename, objects, headers) {
+  async readCsv(filename, headers) {
+    // Map filename to type
+    let type;
+    if (filename.includes('players')) type = 'players';
+    else if (filename.includes('matches')) type = 'matches';
+    else if (filename.includes('leagues')) type = 'leagues';
+    else {
+      console.warn(`Unknown filename: ${filename}`);
+      return [];
+    }
+
+    return await this.loadFromBlob(type, headers);
+  }
+
+  /**
+   * Write CSV data (compatibility method)
+   */
+  async writeCsv(filename, objects, headers) {
+    // Map filename to type
+    let type;
+    if (filename.includes('players')) type = 'players';
+    else if (filename.includes('matches')) type = 'matches';
+    else if (filename.includes('leagues')) type = 'leagues';
+    else {
+      console.warn(`Unknown filename: ${filename}`);
+      return false;
+    }
+
+    const result = await this.saveToBlob(type, objects, headers);
+    return result.success;
+  }
+
+  /**
+   * Download CSV file to user's computer (compatibility method)
+   */
+  downloadCsv(filename, objects, headers) {
     try {
-      const csvString = this.objectsToCsv(objects, headers);
+      const csvString = this.arrayToCSV(objects, headers);
       const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       
@@ -179,6 +338,7 @@ export class CsvService {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
       }
     } catch (error) {
       console.error(`Error downloading CSV file ${filename}:`, error);
@@ -187,22 +347,22 @@ export class CsvService {
   }
 
   /**
-   * Import CSV from uploaded file
+   * Import CSV from uploaded file (compatibility method)
    */
-  static async importCsv(file, headers) {
+  async importCsv(file, headers) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       
       reader.onload = (e) => {
         try {
           const csvString = e.target.result;
-          const objects = this.csvToObjects(csvString, headers);
+          const objects = this.csvToArray(csvString, headers);
           resolve(objects);
         } catch (error) {
           reject(error);
         }
       };
-      
+
       reader.onerror = () => {
         reject(new Error('Failed to read file'));
       };
@@ -210,38 +370,6 @@ export class CsvService {
       reader.readAsText(file);
     });
   }
+}
 
-  /**
-   * Get all available files in Vercel Blob storage
-   */
-  static async listFiles() {
-    try {
-      if (!VercelBlobService.isConfigured()) {
-        console.log('❌ Vercel Blob not configured - cannot list files');
-        return [];
-      }
-      
-      return await VercelBlobService.listFiles();
-    } catch (error) {
-      console.error('❌ Error listing files from Vercel Blob:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Delete a CSV file from Vercel Blob storage
-   */
-  static async deleteFile(filename) {
-    try {
-      if (!VercelBlobService.isConfigured()) {
-        console.log(`❌ Vercel Blob not configured - cannot delete ${filename}`);
-        return false;
-      }
-      
-      return await VercelBlobService.deleteFile(filename);
-    } catch (error) {
-      console.error(`❌ Error deleting file ${filename} from Vercel Blob:`, error);
-      return false;
-    }
-  }
-} 
+export default new CsvService(); 

@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
-import { Users, Trophy, Plus, Target, Menu, Calendar, Award, Github } from "lucide-react";
+import { Users, Trophy, Plus, Target, Menu, Calendar, Award, RefreshCw } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -43,9 +43,9 @@ const navigationItems = [
     icon: Plus,
   },
   {
-    title: "GitHub Settings",
-    url: createPageUrl("GitHubSettings"),
-    icon: Github,
+    title: "Sync Management",
+    url: createPageUrl("Sync"),
+    icon: RefreshCw,
   },
 ];
 

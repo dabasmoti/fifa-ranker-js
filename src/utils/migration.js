@@ -1,7 +1,7 @@
 import { Player } from '@/entities/Player.js';
 import { Match } from '@/entities/Match.js';
 import { League } from '@/entities/League.js';
-import { CsvService } from '@/services/CsvService.js';
+import JsonService from '@/services/JsonService.js';
 
 export class MigrationService {
   /**
@@ -127,7 +127,8 @@ export class MigrationService {
         // Add directly to avoid triggering league checks
         const allMatches = await Match.list();
         allMatches.push(matchData);
-        await CsvService.writeCsv(Match.CSV_FILENAME, allMatches, Match.CSV_HEADERS);
+        const migrationService = new JsonService();
+      await migrationService.writeCsv(Match.CSV_FILENAME, allMatches, Match.CSV_HEADERS);
         
         migrated++;
       }
@@ -270,9 +271,10 @@ export class MigrationService {
       ]);
 
       // Export each data type
-      CsvService.downloadCsv('fifa_players_export.csv', players, Player.CSV_HEADERS);
-      CsvService.downloadCsv('fifa_matches_export.csv', matches, Match.CSV_HEADERS);
-      CsvService.downloadCsv('fifa_leagues_export.csv', leagues, League.CSV_HEADERS);
+      const exportService = new JsonService();
+      exportService.downloadJson('fifa_players_export.json', players);
+      exportService.downloadJson('fifa_matches_export.json', matches);
+      exportService.downloadJson('fifa_leagues_export.json', leagues);
 
       return {
         success: true,
@@ -303,7 +305,8 @@ export class MigrationService {
         } else if (fileName.includes('match')) {
           results.matches = await Match.importFromCsv(file);
         } else if (fileName.includes('league')) {
-          const leagues = await CsvService.importCsv(file, League.CSV_HEADERS);
+          const importService = new JsonService();
+          const leagues = await importService.importCsv(file, League.CSV_HEADERS);
           // Import leagues manually to handle activation properly
           let imported = 0, skipped = 0;
           for (const league of leagues) {

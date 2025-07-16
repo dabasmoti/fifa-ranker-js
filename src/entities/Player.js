@@ -1,9 +1,6 @@
-import { CsvService } from '@/services/CsvService.js';
+import DatabaseService from '@/services/DatabaseService.js';
 
 export class Player {
-  static CSV_FILENAME = 'players.csv';
-  static CSV_HEADERS = ['id', 'name', 'created_date'];
-
   constructor(data) {
     this.id = data.id;
     this.name = data.name;
@@ -12,108 +9,67 @@ export class Player {
 
   static async list() {
     try {
-      const players = await CsvService.readCsv(this.CSV_FILENAME, this.CSV_HEADERS);
+      const dbService = new DatabaseService();
+      const players = await dbService.getPlayers();
       return players;
     } catch (error) {
       console.error('Error loading players:', error);
-      return [];
+      throw new Error('Failed to load players. Please ensure database connection is available.');
     }
   }
 
   static async create(data) {
     try {
-      const players = await this.list();
-      
-      // Check for duplicate names
-      const existingPlayer = players.find(p => 
-        p.name.toLowerCase() === data.name.toLowerCase()
-      );
-      
-      if (existingPlayer) {
-        throw new Error('A player with this name already exists');
-      }
-      
-      const newPlayer = {
-        id: Date.now().toString(),
-        name: data.name.trim(),
-        created_date: new Date().toISOString()
-      };
-      
-      players.push(newPlayer);
-      await CsvService.writeCsv(this.CSV_FILENAME, players, this.CSV_HEADERS);
-      
+      const dbService = new DatabaseService();
+      const newPlayer = await dbService.createPlayer(data.name.trim());
       return newPlayer;
     } catch (error) {
       console.error('Error creating player:', error);
+      
+      // Handle duplicate name error
+      if (error.message.includes('duplicate key value') || error.message.includes('already exists')) {
+        throw new Error('A player with this name already exists');
+      }
+      
       throw error;
     }
   }
 
   static async update(id, data) {
     try {
-      const players = await this.list();
-      const playerIndex = players.findIndex(player => player.id === id);
+      const dbService = new DatabaseService();
+      const updatedPlayer = await dbService.updatePlayer(id, data.name.trim());
       
-      if (playerIndex === -1) {
+      if (!updatedPlayer) {
         throw new Error('Player not found');
       }
-
-      // Check for duplicate names (excluding current player)
-      if (data.name) {
-        const existingPlayer = players.find(p => 
-          p.id !== id && p.name.toLowerCase() === data.name.toLowerCase()
-        );
-        
-        if (existingPlayer) {
-          throw new Error('A player with this name already exists');
-        }
-      }
-
-      const updatedPlayer = {
-        ...players[playerIndex],
-        name: data.name ? data.name.trim() : players[playerIndex].name,
-        updated_date: new Date().toISOString()
-      };
-
-      players[playerIndex] = updatedPlayer;
-      await CsvService.writeCsv(this.CSV_FILENAME, players, this.CSV_HEADERS);
       
       return updatedPlayer;
     } catch (error) {
       console.error('Error updating player:', error);
+      
+      // Handle duplicate name error
+      if (error.message.includes('duplicate key value') || error.message.includes('already exists')) {
+        throw new Error('A player with this name already exists');
+      }
+      
       throw error;
     }
   }
 
   static async delete(id) {
     try {
-      const players = await this.list();
-      const playerToDelete = players.find(player => player.id === id);
-      
-      if (!playerToDelete) {
-        throw new Error('Player not found');
-      }
-
-      // Check if player has matches before deleting
-      const { Match } = await import('@/entities/Match.js');
-      const matches = await Match.list();
-      const playerMatches = matches.filter(match => 
-        match.team1_player1 === playerToDelete.name ||
-        match.team1_player2 === playerToDelete.name ||
-        match.team2_player1 === playerToDelete.name ||
-        match.team2_player2 === playerToDelete.name
-      );
-
-      if (playerMatches.length > 0) {
-        throw new Error(`Cannot delete player "${playerToDelete.name}" - they have ${playerMatches.length} match(es) recorded. Please remove from all matches first.`);
-      }
-      
-      const filteredPlayers = players.filter(player => player.id !== id);
-      await CsvService.writeCsv(this.CSV_FILENAME, filteredPlayers, this.CSV_HEADERS);
-      
+      const dbService = new DatabaseService();
+      await dbService.deletePlayer(id);
       return true;
     } catch (error) {
       console.error('Error deleting player:', error);
+      
+      // Handle foreign key constraint errors
+      if (error.message.includes('foreign key constraint') || error.message.includes('referenced by other data')) {
+        throw new Error('Cannot delete this player as they are referenced in match records');
+      }
+      
       throw error;
     }
   }
@@ -121,10 +77,10 @@ export class Player {
   static async findById(id) {
     try {
       const players = await this.list();
-      return players.find(player => player.id === id) || null;
+      return players.find(p => p.id === id) || null;
     } catch (error) {
       console.error('Error finding player:', error);
-      return null;
+      throw error;
     }
   }
 
@@ -240,49 +196,41 @@ export class Player {
   }
 
   /**
-   * Export players to CSV
+   * Force refresh player data from database (useful for debugging)
    */
-  static async exportToCsv(filename = 'players.csv') {
+  static async refreshData() {
     try {
-      const players = await this.list();
-      CsvService.downloadCsv(filename, players, this.CSV_HEADERS);
-      return filename;
+      const dbService = new DatabaseService();
+      const players = await dbService.getPlayers();
+      console.log(`🔄 Refreshed player data: ${players.length} players loaded from database`);
+      return players;
     } catch (error) {
-      console.error('Error exporting players:', error);
+      console.error('Error refreshing player data:', error);
       throw error;
     }
   }
 
   /**
-   * Import players from CSV file
+   * Export players to JSON
    */
-  static async importFromCsv(file) {
+  static async exportToJson(filename = 'players.json') {
     try {
-      const importedPlayers = await CsvService.importCsv(file, this.CSV_HEADERS);
-      const currentPlayers = await this.list();
+      const players = await this.list();
+      const jsonString = JSON.stringify(players, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
       
-      // Process imported players
-      const processedPlayers = importedPlayers.map(player => ({
-        ...player,
-        id: player.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        name: player.name.trim(),
-        created_date: player.created_date || new Date().toISOString()
-      }));
-
-      // Merge with existing players (avoid duplicates by name)
-      const existingNames = new Set(currentPlayers.map(p => p.name.toLowerCase()));
-      const newPlayers = processedPlayers.filter(p => !existingNames.has(p.name.toLowerCase()));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       
-      const allPlayers = [...currentPlayers, ...newPlayers];
-      await CsvService.writeCsv(this.CSV_FILENAME, allPlayers, this.CSV_HEADERS);
-      
-      return {
-        imported: newPlayers.length,
-        skipped: processedPlayers.length - newPlayers.length,
-        total: allPlayers.length
-      };
+      return filename;
     } catch (error) {
-      console.error('Error importing players:', error);
+      console.error('Error exporting players:', error);
       throw error;
     }
   }

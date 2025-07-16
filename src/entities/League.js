@@ -1,26 +1,19 @@
-import { CsvService } from '@/services/CsvService.js';
+import DatabaseService from '@/services/DatabaseService.js';
 
 export class League {
-  static CSV_FILENAME = 'leagues.csv';
-  static CSV_HEADERS = ['id', 'name', 'description', 'start_date', 'end_date', 'is_active', 'created_date'];
-
   constructor(data) {
     this.id = data.id;
     this.name = data.name;
     this.description = data.description;
-    this.start_date = data.start_date;
-    this.end_date = data.end_date;
     this.is_active = data.is_active;
     this.created_date = data.created_date;
   }
 
   static async list() {
     try {
-      const leagues = await CsvService.readCsv(this.CSV_FILENAME, this.CSV_HEADERS);
-      return leagues.map(data => ({
-        ...data,
-        is_active: data.is_active === 'true'
-      }));
+      const dbService = new DatabaseService();
+      const leagues = await dbService.getLeagues();
+      return leagues;
     } catch (error) {
       console.error('Error loading leagues:', error);
       return [];
@@ -29,93 +22,92 @@ export class League {
 
   static async create(data) {
     try {
-      const leagues = await this.list();
-      
       // Deactivate all other leagues if this one is set as active
       if (data.is_active) {
-        leagues.forEach(league => {
-          league.is_active = false;
-        });
+        await this.deactivateAll();
       }
       
-      const newLeague = {
-        id: Date.now().toString(),
+      const leagueData = {
         name: data.name,
         description: data.description || '',
-        start_date: data.start_date || new Date().toISOString().split('T')[0],
-        end_date: data.end_date || '',
-        is_active: data.is_active === true || data.is_active === 'true',
-        created_date: new Date().toISOString()
+        is_active: data.is_active === true || data.is_active === 'true'
       };
       
-      leagues.push(newLeague);
-      await CsvService.writeCsv(this.CSV_FILENAME, leagues, this.CSV_HEADERS);
+      const dbService = new DatabaseService();
+      const newLeague = await dbService.createLeague(leagueData);
       
       return newLeague;
     } catch (error) {
       console.error('Error creating league:', error);
+      
+      // Handle duplicate name error
+      if (error.message.includes('duplicate key value') || error.message.includes('already exists')) {
+        throw new Error('A league with this name already exists. Please choose a different name.');
+      }
+      
       throw error;
     }
   }
 
   static async update(id, data) {
     try {
-      const leagues = await this.list();
-      const leagueIndex = leagues.findIndex(league => league.id === id);
-      
-      if (leagueIndex === -1) {
-        throw new Error('League not found');
-      }
-
       // If setting this league as active, deactivate all others
       if (data.is_active) {
-        leagues.forEach(league => {
-          league.is_active = false;
-        });
+        await this.deactivateAll();
       }
 
-      const updatedLeague = {
-        ...leagues[leagueIndex],
-        name: data.name || leagues[leagueIndex].name,
-        description: data.description !== undefined ? data.description : leagues[leagueIndex].description,
-        start_date: data.start_date || leagues[leagueIndex].start_date,
-        end_date: data.end_date !== undefined ? data.end_date : leagues[leagueIndex].end_date,
-        is_active: data.is_active !== undefined ? (data.is_active === true || data.is_active === 'true') : leagues[leagueIndex].is_active,
-        updated_date: new Date().toISOString()
+      const updateData = {
+        name: data.name,
+        description: data.description,
+        is_active: data.is_active !== undefined ? (data.is_active === true || data.is_active === 'true') : undefined
       };
 
-      leagues[leagueIndex] = updatedLeague;
-      await CsvService.writeCsv(this.CSV_FILENAME, leagues, this.CSV_HEADERS);
+      // Remove undefined values
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined) {
+          delete updateData[key];
+        }
+      });
+
+      const dbService = new DatabaseService();
+      const updatedLeague = await dbService.updateLeague(id, updateData);
+      
+      if (!updatedLeague) {
+        throw new Error('League not found');
+      }
       
       return updatedLeague;
     } catch (error) {
       console.error('Error updating league:', error);
+      
+      // Handle duplicate name error
+      if (error.message.includes('duplicate key value') || error.message.includes('already exists')) {
+        throw new Error('A league with this name already exists. Please choose a different name.');
+      }
+      
       throw error;
     }
   }
 
   static async delete(id) {
     try {
-      const leagues = await this.list();
-      const leagueToDelete = leagues.find(league => league.id === id);
-      
-      if (!leagueToDelete) {
+      const league = await this.findById(id);
+      if (!league) {
         throw new Error('League not found');
       }
 
       // Don't allow deleting the active league if it has matches
-      if (leagueToDelete.is_active) {
+      if (league.is_active) {
         const { Match } = await import('@/entities/Match.js');
-        const matches = await Match.list();
-        const leagueMatches = matches.filter(match => match.league_id === id);
+        const matches = await Match.getByLeague(id);
         
-        if (leagueMatches.length > 0) {
+        if (matches.length > 0) {
           throw new Error('Cannot delete active league with existing matches. End the league first.');
         }
       }
       
-      const filteredLeagues = leagues.filter(league => league.id !== id);
-      await CsvService.writeCsv(this.CSV_FILENAME, filteredLeagues, this.CSV_HEADERS);
+      const dbService = new DatabaseService();
+      await dbService.deleteLeague(id);
       
       return true;
     } catch (error) {
@@ -127,7 +119,7 @@ export class League {
   static async findById(id) {
     try {
       const leagues = await this.list();
-      return leagues.find(league => league.id === id) || null;
+      return leagues.find(league => league.id === parseInt(id)) || null;
     } catch (error) {
       console.error('Error finding league:', error);
       return null;
@@ -136,8 +128,9 @@ export class League {
 
   static async getActive() {
     try {
-      const leagues = await this.list();
-      return leagues.find(league => league.is_active) || null;
+      const dbService = new DatabaseService();
+      const activeLeague = await dbService.getActiveLeague();
+      return activeLeague;
     } catch (error) {
       console.error('Error finding active league:', error);
       return null;
@@ -146,25 +139,32 @@ export class League {
 
   static async setActive(id) {
     try {
-      const leagues = await this.list();
+      const dbService = new DatabaseService();
+      const activeLeague = await dbService.setActiveLeague(id);
       
-      // Deactivate all leagues
-      leagues.forEach(league => {
-        league.is_active = false;
-      });
-      
-      // Activate the specified league
-      const targetLeague = leagues.find(league => league.id === id);
-      if (!targetLeague) {
+      if (!activeLeague) {
         throw new Error('League not found');
       }
       
-      targetLeague.is_active = true;
-      await CsvService.writeCsv(this.CSV_FILENAME, leagues, this.CSV_HEADERS);
-      
-      return targetLeague;
+      return activeLeague;
     } catch (error) {
       console.error('Error setting active league:', error);
+      throw error;
+    }
+  }
+
+  static async deactivateAll() {
+    try {
+      const leagues = await this.list();
+      const dbService = new DatabaseService();
+      
+      for (const league of leagues) {
+        if (league.is_active) {
+          await dbService.updateLeague(league.id, { is_active: false });
+        }
+      }
+    } catch (error) {
+      console.error('Error deactivating leagues:', error);
       throw error;
     }
   }
@@ -177,7 +177,6 @@ export class League {
       }
 
       const updatedLeague = await this.update(id, {
-        end_date: endDate || new Date().toISOString().split('T')[0],
         is_active: false
       });
 
@@ -201,7 +200,9 @@ export class League {
         });
       }
       
-      return existingLeagues.find(l => l.is_active) || existingLeagues[0];
+      // Return active league or first league
+      const activeLeague = await this.getActive();
+      return activeLeague || existingLeagues[0];
     } catch (error) {
       console.error('Error creating default league:', error);
       throw error;
@@ -217,15 +218,13 @@ export class League {
       const { Player } = await import('@/entities/Player.js');
       
       const [matches, players] = await Promise.all([
-        Match.list(),
+        Match.getByLeague(leagueId),
         Player.list()
       ]);
       
-      const leagueMatches = matches.filter(match => match.league_id === leagueId);
-      
       // Get unique players who played in this league
       const leaguePlayerNames = new Set();
-      leagueMatches.forEach(match => {
+      matches.forEach(match => {
         leaguePlayerNames.add(match.team1_player1);
         leaguePlayerNames.add(match.team1_player2);
         leaguePlayerNames.add(match.team2_player1);
@@ -233,11 +232,11 @@ export class League {
       });
       
       return {
-        total_matches: leagueMatches.length,
+        total_matches: matches.length,
         total_players: leaguePlayerNames.size,
-        date_range: leagueMatches.length > 0 ? {
-          start: Math.min(...leagueMatches.map(m => new Date(m.match_date))),
-          end: Math.max(...leagueMatches.map(m => new Date(m.match_date)))
+        date_range: matches.length > 0 ? {
+          start: Math.min(...matches.map(m => new Date(m.match_date))),
+          end: Math.max(...matches.map(m => new Date(m.match_date)))
         } : null
       };
     } catch (error) {
@@ -257,16 +256,24 @@ export class League {
     try {
       const { Match } = await import('@/entities/Match.js');
       const league = await this.findById(leagueId);
-      const matches = await Match.list();
-      const leagueMatches = matches.filter(match => match.league_id === leagueId);
+      const leagueMatches = await Match.getByLeague(leagueId);
       
       if (!league) {
         throw new Error('League not found');
       }
       
-      // Export matches for this league
-      const filename = `${league.name.replace(/[^a-zA-Z0-9]/g, '_')}_matches.csv`;
-      CsvService.downloadCsv(filename, leagueMatches, Match.CSV_HEADERS);
+      // Create download link
+      const filename = `${league.name.replace(/[^a-zA-Z0-9]/g, '_')}_matches.json`;
+      const dataStr = JSON.stringify(leagueMatches, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      
+      URL.revokeObjectURL(url);
       
       return filename;
     } catch (error) {

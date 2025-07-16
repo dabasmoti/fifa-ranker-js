@@ -50,14 +50,24 @@ export default function Players() {
   const loadPlayers = async () => {
     setLoading(true);
     try {
-      const playersData = await Player.getAllPlayersWithStats();
+      // Force refresh to get the latest data with cache-busting
+      console.log('🔄 Loading players with cache-busting...');
+      const playersData = await Player.refreshData();
       setPlayers(playersData);
+      console.log(`✅ Loaded ${playersData.length} players from Vercel Blob`);
     } catch (error) {
       console.error("Error loading players:", error);
       setError("Failed to load players");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    console.log('🔄 Manually refreshing player data...');
+    await loadPlayers();
+    setSuccess("Player data refreshed!");
+    setTimeout(() => setSuccess(""), 2000);
   };
 
   const filterPlayers = () => {
@@ -201,6 +211,14 @@ export default function Players() {
           >
             <Download className="w-5 h-5 mr-2" />
             Export
+          </Button>
+          <Button 
+            onClick={handleRefresh}
+            variant="outline"
+            className="border-purple-600 text-purple-600 hover:bg-purple-50"
+          >
+            <TrendingUp className="w-5 h-5 mr-2" />
+            Refresh
           </Button>
           <div className="relative">
             <Button 

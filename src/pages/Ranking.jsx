@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
-import { VercelBlobService } from "@/services/VercelBlobService.js";
+
 
 export default function Rankings() {
   const navigate = useNavigate();

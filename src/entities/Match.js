@@ -1,10 +1,7 @@
-import { CsvService } from '@/services/CsvService.js';
+import DatabaseService from '@/services/DatabaseService.js';
 import { League } from '@/entities/League.js';
 
 export class Match {
-  static CSV_FILENAME = 'matches.csv';
-  static CSV_HEADERS = ['id', 'league_id', 'team1_player1', 'team1_player2', 'team2_player1', 'team2_player2', 'team1_score', 'team2_score', 'match_date', 'created_date'];
-
   constructor(data) {
     this.id = data.id;
     this.league_id = data.league_id;
@@ -12,44 +9,16 @@ export class Match {
     this.team1_player2 = data.team1_player2;
     this.team2_player1 = data.team2_player1;
     this.team2_player2 = data.team2_player2;
-    this.team1_score = data.team1_score;
-    this.team2_score = data.team2_score;
+    this.team1_score = parseInt(data.team1_score) || 0;
+    this.team2_score = parseInt(data.team2_score) || 0;
     this.match_date = data.match_date;
     this.created_date = data.created_date;
   }
 
   static async list(sort = '-created_date', limit = null, leagueId = null) {
     try {
-      let matches = await CsvService.readCsv(this.CSV_FILENAME, this.CSV_HEADERS);
-      
-      // Convert string numbers back to integers for scores
-      matches = matches.map(match => ({
-        ...match,
-        team1_score: parseInt(match.team1_score) || 0,
-        team2_score: parseInt(match.team2_score) || 0
-      }));
-      
-      // Filter by league if specified
-      if (leagueId) {
-        matches = matches.filter(match => match.league_id === leagueId);
-      }
-      
-      // Sort matches by created_date (newest first by default)
-      if (sort === '-created_date') {
-        matches.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-      } else if (sort === 'created_date') {
-        matches.sort((a, b) => new Date(a.created_date) - new Date(b.created_date));
-      } else if (sort === '-match_date') {
-        matches.sort((a, b) => new Date(b.match_date) - new Date(a.match_date));
-      } else if (sort === 'match_date') {
-        matches.sort((a, b) => new Date(a.match_date) - new Date(b.match_date));
-      }
-      
-      // Apply limit if specified
-      if (limit && typeof limit === 'number') {
-        matches = matches.slice(0, limit);
-      }
-      
+      const dbService = new DatabaseService();
+      const matches = await dbService.getMatches({ sort, limit, leagueId });
       return matches;
     } catch (error) {
       console.error('Error loading matches:', error);
@@ -72,22 +41,19 @@ export class Match {
         }
       }
 
-      const matches = await this.list();
-      const newMatch = {
-        id: Date.now().toString(),
+      const matchData = {
         league_id: leagueId,
         team1_player1: data.team1_player1,
         team1_player2: data.team1_player2,
         team2_player1: data.team2_player1,
         team2_player2: data.team2_player2,
-        team1_score: data.team1_score,
-        team2_score: data.team2_score,
-        match_date: data.match_date || new Date().toISOString().split('T')[0],
-        created_date: new Date().toISOString()
+        team1_score: parseInt(data.team1_score) || 0,
+        team2_score: parseInt(data.team2_score) || 0,
+        match_date: data.match_date || new Date().toISOString().split('T')[0]
       };
       
-      matches.push(newMatch);
-      await CsvService.writeCsv(this.CSV_FILENAME, matches, this.CSV_HEADERS);
+      const dbService = new DatabaseService();
+      const newMatch = await dbService.createMatch(matchData);
       
       return newMatch;
     } catch (error) {
@@ -98,28 +64,22 @@ export class Match {
 
   static async update(id, data) {
     try {
-      const matches = await this.list();
-      const matchIndex = matches.findIndex(match => match.id === id);
+      const matchData = {
+        team1_player1: data.team1_player1,
+        team1_player2: data.team1_player2,
+        team2_player1: data.team2_player1,
+        team2_player2: data.team2_player2,
+        team1_score: parseInt(data.team1_score) || 0,
+        team2_score: parseInt(data.team2_score) || 0,
+        match_date: data.match_date
+      };
       
-      if (matchIndex === -1) {
+      const dbService = new DatabaseService();
+      const updatedMatch = await dbService.updateMatch(id, matchData);
+      
+      if (!updatedMatch) {
         throw new Error('Match not found');
       }
-
-      const updatedMatch = {
-        ...matches[matchIndex],
-        team1_player1: data.team1_player1 || matches[matchIndex].team1_player1,
-        team1_player2: data.team1_player2 || matches[matchIndex].team1_player2,
-        team2_player1: data.team2_player1 || matches[matchIndex].team2_player1,
-        team2_player2: data.team2_player2 || matches[matchIndex].team2_player2,
-        team1_score: data.team1_score !== undefined ? data.team1_score : matches[matchIndex].team1_score,
-        team2_score: data.team2_score !== undefined ? data.team2_score : matches[matchIndex].team2_score,
-        match_date: data.match_date || matches[matchIndex].match_date,
-        league_id: data.league_id || matches[matchIndex].league_id,
-        updated_date: new Date().toISOString()
-      };
-
-      matches[matchIndex] = updatedMatch;
-      await CsvService.writeCsv(this.CSV_FILENAME, matches, this.CSV_HEADERS);
       
       return updatedMatch;
     } catch (error) {
@@ -130,16 +90,8 @@ export class Match {
 
   static async delete(id) {
     try {
-      const matches = await this.list();
-      const matchToDelete = matches.find(match => match.id === id);
-      
-      if (!matchToDelete) {
-        throw new Error('Match not found');
-      }
-
-      const filteredMatches = matches.filter(match => match.id !== id);
-      await CsvService.writeCsv(this.CSV_FILENAME, filteredMatches, this.CSV_HEADERS);
-      
+      const dbService = new DatabaseService();
+      await dbService.deleteMatch(id);
       return true;
     } catch (error) {
       console.error('Error deleting match:', error);
@@ -186,21 +138,19 @@ export class Match {
    */
   static async migrateToLeague(matchIds, targetLeagueId) {
     try {
-      const matches = await this.list();
-      let updated = false;
+      const dbService = new DatabaseService();
+      let updatedCount = 0;
 
-      matches.forEach(match => {
-        if (matchIds.includes(match.id)) {
-          match.league_id = targetLeagueId;
-          updated = true;
+      for (const matchId of matchIds) {
+        try {
+          await dbService.updateMatch(matchId, { league_id: targetLeagueId });
+          updatedCount++;
+        } catch (error) {
+          console.error(`Error migrating match ${matchId}:`, error);
         }
-      });
-
-      if (updated) {
-        await CsvService.writeCsv(this.CSV_FILENAME, matches, this.CSV_HEADERS);
       }
 
-      return updated;
+      return updatedCount > 0;
     } catch (error) {
       console.error('Error migrating matches to league:', error);
       throw error;
@@ -254,16 +204,26 @@ export class Match {
   }
 
   /**
-   * Export matches to CSV
+   * Export matches to JSON
    */
-  static async exportToCsv(leagueId = null, filename = null) {
+  static async exportToJson(leagueId = null, filename = null) {
     try {
       const matches = leagueId ? await this.getByLeague(leagueId) : await this.list();
       
       const exportFilename = filename || 
-        (leagueId ? `league_${leagueId}_matches.csv` : 'all_matches.csv');
+        (leagueId ? `league_${leagueId}_matches.json` : 'all_matches.json');
       
-      CsvService.downloadCsv(exportFilename, matches, this.CSV_HEADERS);
+      // Create download link
+      const dataStr = JSON.stringify(matches, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = exportFilename;
+      link.click();
+      
+      URL.revokeObjectURL(url);
       
       return exportFilename;
     } catch (error) {
@@ -273,47 +233,75 @@ export class Match {
   }
 
   /**
-   * Import matches from CSV file
+   * Import matches from JSON file
    */
-  static async importFromCsv(file, leagueId = null) {
+  static async importFromJson(file, leagueId = null) {
     try {
-      const importedMatches = await CsvService.importCsv(file, this.CSV_HEADERS);
-      const currentMatches = await this.list();
-      
-      // Get active league if no league specified
-      let targetLeagueId = leagueId;
-      if (!targetLeagueId) {
-        const activeLeague = await League.getActive();
-        if (!activeLeague) {
-          const defaultLeague = await League.createDefault();
-          targetLeagueId = defaultLeague.id;
-        } else {
-          targetLeagueId = activeLeague.id;
-        }
-      }
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = async (e) => {
+          try {
+            const importedMatches = JSON.parse(e.target.result);
+            
+            // Get active league if no league specified
+            let targetLeagueId = leagueId;
+            if (!targetLeagueId) {
+              const activeLeague = await League.getActive();
+              if (!activeLeague) {
+                const defaultLeague = await League.createDefault();
+                targetLeagueId = defaultLeague.id;
+              } else {
+                targetLeagueId = activeLeague.id;
+              }
+            }
 
-      // Process imported matches
-      const processedMatches = importedMatches.map(match => ({
-        ...match,
-        id: match.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        league_id: targetLeagueId,
-        team1_score: parseInt(match.team1_score) || 0,
-        team2_score: parseInt(match.team2_score) || 0,
-        created_date: match.created_date || new Date().toISOString()
-      }));
+            const dbService = new DatabaseService();
+            const currentMatches = await this.list();
+            const existingIds = new Set(currentMatches.map(m => m.id));
+            
+            let importedCount = 0;
+            let skippedCount = 0;
 
-      // Merge with existing matches (avoid duplicates by ID)
-      const existingIds = new Set(currentMatches.map(m => m.id));
-      const newMatches = processedMatches.filter(m => !existingIds.has(m.id));
-      
-      const allMatches = [...currentMatches, ...newMatches];
-      await CsvService.writeCsv(this.CSV_FILENAME, allMatches, this.CSV_HEADERS);
-      
-      return {
-        imported: newMatches.length,
-        skipped: processedMatches.length - newMatches.length,
-        total: allMatches.length
-      };
+            for (const match of importedMatches) {
+              if (existingIds.has(match.id)) {
+                skippedCount++;
+                continue;
+              }
+
+              const matchData = {
+                league_id: targetLeagueId,
+                team1_player1: match.team1_player1,
+                team1_player2: match.team1_player2,
+                team2_player1: match.team2_player1,
+                team2_player2: match.team2_player2,
+                team1_score: parseInt(match.team1_score) || 0,
+                team2_score: parseInt(match.team2_score) || 0,
+                match_date: match.match_date || new Date().toISOString().split('T')[0]
+              };
+
+              try {
+                await dbService.createMatch(matchData);
+                importedCount++;
+              } catch (error) {
+                console.error('Error importing match:', error);
+                skippedCount++;
+              }
+            }
+            
+            resolve({
+              imported: importedCount,
+              skipped: skippedCount,
+              total: currentMatches.length + importedCount
+            });
+          } catch (error) {
+            reject(error);
+          }
+        };
+        
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsText(file);
+      });
     } catch (error) {
       console.error('Error importing matches:', error);
       throw error;
