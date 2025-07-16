@@ -21,7 +21,8 @@ import {
   Play,
   Pause,
   CheckCircle,
-  Clock
+  Clock,
+  AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -62,7 +63,7 @@ export default function Seasons() {
       // Load stats for each season
       const stats = {};
       for (const season of seasonsData) {
-        const matches = await Match.getByLeague(season.id);
+        const matches = await Match.getBySeason(season.id);
         stats[season.id] = {
           totalMatches: matches.length,
           uniquePlayers: new Set([
@@ -173,6 +174,46 @@ export default function Seasons() {
       } catch (error) {
         console.error("Error deleting season:", error);
         setError(error.message || "Failed to delete season");
+      }
+    }
+  };
+
+  const handleDeleteAllMatches = async () => {
+    if (!isAdmin) {
+      setError("Only administrators can delete all matches");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "⚠️ DANGER: This will permanently delete ALL matches from the database!\n\n" +
+      "This action cannot be undone. Are you absolutely sure you want to continue?"
+    );
+
+    if (confirmed) {
+      const doubleConfirmed = window.confirm(
+        "This is your final warning!\n\n" +
+        "ALL MATCHES WILL BE PERMANENTLY DELETED.\n\n" +
+        "Type 'DELETE ALL' in the next prompt to confirm."
+      );
+
+      if (doubleConfirmed) {
+        const finalConfirmation = prompt(
+          "Type 'DELETE ALL' (case sensitive) to confirm deletion of all matches:"
+        );
+
+        if (finalConfirmation === "DELETE ALL") {
+          try {
+            await Match.deleteAll();
+            setSuccess("All matches have been deleted successfully!");
+            loadData(); // Reload to update match counts
+            setTimeout(() => setSuccess(""), 5000);
+          } catch (error) {
+            console.error("Error deleting all matches:", error);
+            setError("Failed to delete all matches. Please try again.");
+          }
+        } else {
+          setError("Confirmation text did not match. Deletion cancelled.");
+        }
       }
     }
   };
@@ -398,11 +439,21 @@ export default function Seasons() {
 
       {/* Action Buttons */}
       {!showCreateForm && !showEditForm && (
-        <div className="mb-6">
+        <div className="mb-6 flex gap-3 flex-wrap">
           <Button onClick={openCreateForm} className="flex items-center gap-2">
             <Plus className="w-4 h-4" />
             Create New Season
           </Button>
+          {isAdmin && (
+            <Button 
+              onClick={handleDeleteAllMatches}
+              variant="outline"
+              className="flex items-center gap-2 border-red-600 text-red-600 hover:bg-red-50"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              Delete All Matches
+            </Button>
+          )}
         </div>
       )}
 

@@ -251,6 +251,10 @@ class DatabaseService {
         await sql`DELETE FROM matches WHERE id = ${params.id}`;
         return { success: true };
 
+      case 'matches.deleteAll':
+        await sql`DELETE FROM matches`;
+        return { success: true };
+
       default:
         throw new Error(`Unknown database action: ${action}`);
     }

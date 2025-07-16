@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Player } from "@/entities/Player.js";
 import { Match } from "@/entities/Match.js";
+import { Season } from "@/entities/Season.js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { Plus, Users, Calendar, Trophy } from "lucide-react";
+import { Plus, Users, Calendar, Trophy, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
@@ -16,6 +17,8 @@ export default function AddMatch() {
   const navigate = useNavigate();
   const [players, setPlayers] = useState([]);
   const [recentMatches, setRecentMatches] = useState([]);
+  const [seasons, setSeasons] = useState([]);
+  const [activeSeason, setActiveSeason] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -28,7 +31,8 @@ export default function AddMatch() {
     team2_player2: "",
     team1_score: "",
     team2_score: "",
-    match_date: new Date().toISOString().split('T')[0]
+    match_date: new Date().toISOString().split('T')[0],
+    seasonId: ""
   });
 
   useEffect(() => {
@@ -37,13 +41,25 @@ export default function AddMatch() {
 
   const loadData = async () => {
     try {
-      const [playersData, matchesData] = await Promise.all([
+      const [playersData, matchesData, seasonsData, activeSeasonData] = await Promise.all([
         Player.list(),
-        Match.list('-created_date', 5)
+        Match.list('-created_date', 5),
+        Season.list(),
+        Season.getActive()
       ]);
       
       setPlayers(playersData);
       setRecentMatches(matchesData);
+      setSeasons(seasonsData);
+      setActiveSeason(activeSeasonData);
+      
+      // Set default season to active season if it exists
+      if (activeSeasonData && !matchData.seasonId) {
+        setMatchData(prev => ({
+          ...prev,
+          seasonId: activeSeasonData.id.toString()
+        }));
+      }
     } catch (error) {
       console.error("Error loading data:", error);
     } finally {
@@ -60,7 +76,7 @@ export default function AddMatch() {
   };
 
   const validateMatch = () => {
-    const { team1_player1, team1_player2, team2_player1, team2_player2, team1_score, team2_score } = matchData;
+    const { team1_player1, team1_player2, team2_player1, team2_player2, team1_score, team2_score, seasonId } = matchData;
     
     if (!team1_player1 || !team1_player2 || !team2_player1 || !team2_player2) {
       return "Please select all players for both teams";
@@ -84,6 +100,10 @@ export default function AddMatch() {
       return "Please enter valid scores (0 or higher)";
     }
 
+    if (!seasonId) {
+      return "Please select a season for this match";
+    }
+
     return null;
   };
 
@@ -103,12 +123,14 @@ export default function AddMatch() {
       await Match.create({
         ...matchData,
         team1_score: parseInt(matchData.team1_score),
-        team2_score: parseInt(matchData.team2_score)
+        team2_score: parseInt(matchData.team2_score),
+        seasonId: parseInt(matchData.seasonId)
       });
 
       setSuccess("Match recorded successfully!");
       
-      // Reset form
+      // Reset form but keep the selected season
+      const currentSeasonId = matchData.seasonId;
       setMatchData({
         team1_player1: "",
         team1_player2: "",
@@ -116,7 +138,8 @@ export default function AddMatch() {
         team2_player2: "",
         team1_score: "",
         team2_score: "",
-        match_date: new Date().toISOString().split('T')[0]
+        match_date: new Date().toISOString().split('T')[0],
+        seasonId: currentSeasonId
       });
 
       // Reload recent matches
@@ -178,6 +201,26 @@ export default function AddMatch() {
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Record Match</h1>
         <p className="text-gray-600">Add a new FIFA match result</p>
       </div>
+
+      {/* Season Info */}
+      {activeSeason ? (
+        <Alert className="mb-6 border-green-200 bg-green-50">
+          <Info className="w-4 h-4" />
+          <AlertDescription className="text-green-800">
+            <strong>Active Season:</strong> {activeSeason.name}
+            {activeSeason.description && ` - ${activeSeason.description}`}
+            <br />
+            <span className="text-sm">This season is pre-selected by default, but you can choose any unlocked season.</span>
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Alert className="mb-6 border-blue-200 bg-blue-50">
+          <Info className="w-4 h-4" />
+          <AlertDescription className="text-blue-800">
+            <strong>No Active Season:</strong> Please select a season for your match, or a new season will be automatically created.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card className="mb-8">
         <CardHeader>
@@ -297,16 +340,36 @@ export default function AddMatch() {
               </div>
             </div>
 
-            {/* Match Date */}
-            <div className="max-w-xs">
-              <Label htmlFor="match_date">Match Date</Label>
-              <Input
-                id="match_date"
-                type="date"
-                value={matchData.match_date}
-                onChange={(e) => handleInputChange('match_date', e.target.value)}
-                className="mt-1"
-              />
+            {/* Match Date and Season */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="match_date">Match Date</Label>
+                <Input
+                  id="match_date"
+                  type="date"
+                  value={matchData.match_date}
+                  onChange={(e) => handleInputChange('match_date', e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="seasonId">Season</Label>
+                <Select 
+                  value={matchData.seasonId} 
+                  onChange={(e) => handleInputChange('seasonId', e.target.value)}
+                  className="mt-1"
+                >
+                  <option value="">Select season</option>
+                  {seasons.map((season) => (
+                    <option key={season.id} value={season.id}>
+                      {season.name}
+                      {season.is_active && " (Active)"}
+                      {season.is_locked && " (Ended)"}
+                    </option>
+                  ))}
+                </Select>
+              </div>
             </div>
 
             {/* Alerts */}

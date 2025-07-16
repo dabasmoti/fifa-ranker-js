@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Match } from "@/entities/Match.js";
+import { Season } from "@/entities/Season.js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Trophy, Search, Filter, Calendar, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Trophy, Search, Filter, Calendar, Plus, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
 import MatchCard from "@/components/matches/MatchCard.jsx";
@@ -15,6 +17,9 @@ export default function Matches() {
   const navigate = useNavigate();
   const [matches, setMatches] = useState([]);
   const [filteredMatches, setFilteredMatches] = useState([]);
+  const [seasons, setSeasons] = useState([]);
+  const [selectedSeason, setSelectedSeason] = useState("all");
+  const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("-created_date");
@@ -25,17 +30,60 @@ export default function Matches() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    loadMatches();
+    loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (seasons.length > 0) {
+      loadMatches();
+    }
+  }, [selectedSeason, seasons]);
 
   useEffect(() => {
     filterAndSortMatches();
   }, [matches, searchTerm, sortBy, filterBy]);
 
-  const loadMatches = async () => {
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showSeasonDropdown && !event.target.closest('.season-dropdown')) {
+        setShowSeasonDropdown(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showSeasonDropdown]);
+
+  const loadInitialData = async () => {
+    try {
+      const seasonsData = await Season.list();
+      setSeasons(seasonsData);
+      
+      // Set default to active season if exists, otherwise "all"
+      const activeSeason = seasonsData.find(s => s.is_active);
+      let initialSeasonId = "all";
+      if (activeSeason) {
+        initialSeasonId = activeSeason.id.toString();
+        setSelectedSeason(initialSeasonId);
+      }
+      
+      // Load matches with the correct season ID
+      await loadMatches(initialSeasonId);
+    } catch (error) {
+      console.error("Error loading initial data:", error);
+      setError("Failed to load seasons");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMatches = async (seasonIdOverride = null) => {
     setLoading(true);
     try {
-      const matchesData = await Match.list();
+      const seasonToUse = seasonIdOverride !== null ? seasonIdOverride : selectedSeason;
+      const seasonId = seasonToUse === "all" ? null : parseInt(seasonToUse);
+      const matchesData = await Match.list("-created_date", null, seasonId);
       setMatches(matchesData);
     } catch (error) {
       console.error("Error loading matches:", error);
@@ -118,6 +166,12 @@ export default function Matches() {
     return { totalMatches, team1Wins, team2Wins, draws };
   };
 
+  const getSelectedSeasonName = () => {
+    if (selectedSeason === "all") return "All Time";
+    const season = seasons.find(s => s.id.toString() === selectedSeason);
+    return season ? season.name : "Unknown Season";
+  };
+
   if (loading) {
     return (
       <div className="p-8 max-w-7xl mx-auto">
@@ -147,13 +201,69 @@ export default function Matches() {
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Matches</h1>
           <p className="text-gray-600">View and manage all FIFA matches</p>
         </div>
-        <Button 
-          onClick={() => navigate(createPageUrl("AddMatch"))}
-          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Add Match
-        </Button>
+        <div className="flex gap-3 flex-wrap">
+          {/* Season Selector */}
+          <div className="relative season-dropdown">
+            <Button
+              variant="outline"
+              onClick={() => setShowSeasonDropdown(!showSeasonDropdown)}
+              className="flex items-center gap-2 min-w-[150px] justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                <span>{getSelectedSeasonName()}</span>
+              </div>
+              <ChevronDown className="w-4 h-4" />
+            </Button>
+            
+            {showSeasonDropdown && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-[200px]">
+                <div className="py-1">
+                  <button
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                      selectedSeason === "all" ? "bg-blue-50 text-blue-600" : ""
+                    }`}
+                    onClick={() => {
+                      setSelectedSeason("all");
+                      setShowSeasonDropdown(false);
+                    }}
+                  >
+                    🏆 All Time
+                  </button>
+                  {seasons.map((season) => (
+                    <button
+                      key={season.id}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        selectedSeason === season.id.toString() ? "bg-blue-50 text-blue-600" : ""
+                      }`}
+                      onClick={() => {
+                        setSelectedSeason(season.id.toString());
+                        setShowSeasonDropdown(false);
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{season.name}</span>
+                        {season.is_active && (
+                          <Badge variant="success" className="text-xs">Active</Badge>
+                        )}
+                        {season.is_locked && (
+                          <Badge variant="secondary" className="text-xs">Ended</Badge>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <Button 
+            onClick={() => navigate(createPageUrl("AddMatch"))}
+            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add Match
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -299,15 +409,15 @@ export default function Matches() {
           <CardContent>
             <Trophy className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {searchTerm || filterBy !== "all" ? "No Matches Found" : "No Matches Yet"}
+              {searchTerm || filterBy !== "all" || selectedSeason !== "all" ? "No Matches Found" : "No Matches Yet"}
             </h3>
             <p className="text-gray-500 mb-4">
-              {searchTerm || filterBy !== "all" 
+              {searchTerm || filterBy !== "all" || selectedSeason !== "all" 
                 ? "Try adjusting your search or filter criteria."
                 : "Start by recording your first match."
               }
             </p>
-            {(!searchTerm && filterBy === "all") && (
+            {(!searchTerm && filterBy === "all" && selectedSeason === "all") && (
               <Button 
                 onClick={() => navigate(createPageUrl("AddMatch"))}
                 className="bg-blue-600 hover:bg-blue-700"

@@ -59,12 +59,14 @@ export default function Rankings() {
       
       // Set default to active season if exists, otherwise "all"
       const activeSeason = seasonsData.find(s => s.is_active);
+      let initialSeasonId = "all";
       if (activeSeason) {
-        setSelectedSeason(activeSeason.id.toString());
+        initialSeasonId = activeSeason.id.toString();
+        setSelectedSeason(initialSeasonId);
       }
       
-      // Load players after seasons are loaded
-      await loadPlayers();
+      // Load players with the correct season ID
+      await loadPlayers(initialSeasonId);
     } catch (error) {
       console.error("Error loading initial data:", error);
       setError("Failed to load data");
@@ -73,9 +75,10 @@ export default function Rankings() {
     }
   };
 
-  const loadPlayers = async () => {
+  const loadPlayers = async (seasonIdOverride = null) => {
     try {
-      const seasonId = selectedSeason === "all" ? null : parseInt(selectedSeason);
+      const seasonToUse = seasonIdOverride !== null ? seasonIdOverride : selectedSeason;
+      const seasonId = seasonToUse === "all" ? null : parseInt(seasonToUse);
       const playersData = await Player.getAllPlayersWithStats(seasonId);
       setPlayers(playersData);
     } catch (error) {
@@ -104,7 +107,7 @@ export default function Rankings() {
   const stats = {
     totalPlayers: players.length,
     activePlayers: players.filter(p => p.matches_played > 0).length,
-    totalMatches: players.reduce((sum, p) => sum + p.matches_played, 0) / 2, // Divide by 2 since each match involves 2 players
+    totalMatches: players.reduce((sum, p) => sum + p.matches_played, 0) / 4, // Divide by 4 since each match involves 4 players (2v2)
     avgSuccessRate: players.length > 0 ? 
       (players.reduce((sum, p) => sum + parseFloat(p.success_percentage), 0) / players.length).toFixed(1) : 0
   };

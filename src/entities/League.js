@@ -99,7 +99,7 @@ export class League {
       // Don't allow deleting the active league if it has matches
       if (league.is_active) {
         const { Match } = await import('@/entities/Match.js');
-        const matches = await Match.getByLeague(id);
+        const matches = await Match.getBySeason(id);
         
         if (matches.length > 0) {
           throw new Error('Cannot delete active league with existing matches. End the league first.');

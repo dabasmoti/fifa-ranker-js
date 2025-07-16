@@ -40,9 +40,9 @@ export class Season {
       };
       
       const dbService = new DatabaseService();
-      const newSeason = await dbService.createLeague(seasonData);
+      const newSeason = await dbService.executeQuery('leagues.create', seasonData);
       
-      return newSeason;
+      return newSeason.data;
     } catch (error) {
       console.error('Error creating season:', error);
       
@@ -70,7 +70,7 @@ export class Season {
     try {
       // Check if season has matches before deleting
       const { Match } = await import('@/entities/Match.js');
-      const matches = await Match.getByLeague(id);
+      const matches = await Match.getBySeason(id);
       
       if (matches.length > 0) {
         throw new Error('Cannot delete season with existing matches. End the season first.');
@@ -188,7 +188,7 @@ export class Season {
       const { Match } = await import('@/entities/Match.js');
       
       if (seasonId) {
-        const matches = await Match.getByLeague(seasonId);
+        const matches = await Match.getBySeason(seasonId);
         const season = await this.findById(seasonId);
         
         return {

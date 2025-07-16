@@ -28,17 +28,34 @@ export class Match {
 
   static async create(data) {
     try {
-      // Get active season if no league_id provided
-      let seasonId = data.league_id;
+      let seasonId = data.seasonId;
+      
+      // If no seasonId provided, use the active season or create one
       if (!seasonId) {
-        const activeSeason = await Season.getActive();
+        let activeSeason = await Season.getActive();
+        
         if (!activeSeason) {
-          // Create a default season if none exists
-          const defaultSeason = await Season.createDefault();
-          seasonId = defaultSeason.id;
-        } else {
-          seasonId = activeSeason.id;
+          // If no active season exists, create a new one
+          console.log('No active season found, creating new season for match');
+          activeSeason = await Season.create({
+            name: `Season ${new Date().getFullYear()}`,
+            description: 'Auto-created season for new matches',
+            start_date: new Date().toISOString().split('T')[0],
+            is_active: true
+          });
         }
+        
+        seasonId = activeSeason.id;
+      }
+
+      // Verify the season exists and is not locked
+      const season = await Season.findById(seasonId);
+      if (!season) {
+        throw new Error('Selected season does not exist.');
+      }
+      
+      if (season.is_locked) {
+        throw new Error('Cannot add matches to locked seasons. Please select an active season.');
       }
 
       const matchData = {
@@ -95,6 +112,20 @@ export class Match {
       return true;
     } catch (error) {
       console.error('Error deleting match:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete all matches (admin function)
+   */
+  static async deleteAll() {
+    try {
+      const dbService = new DatabaseService();
+      await dbService.executeQuery('matches.deleteAll');
+      return true;
+    } catch (error) {
+      console.error('Error deleting all matches:', error);
       throw error;
     }
   }
