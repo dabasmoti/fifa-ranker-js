@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
-import { Users, Trophy, Plus, Target, Menu, Calendar, Award, Github } from "lucide-react";
+import { Users, Trophy, Plus, Target, Menu, Calendar, CalendarDays } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -28,9 +28,9 @@ const navigationItems = [
     icon: Users,
   },
   {
-    title: "Leagues",
-    url: createPageUrl("Leagues"),
-    icon: Award,
+    title: "Seasons",
+    url: createPageUrl("Seasons"),
+    icon: CalendarDays,
   },
   {
     title: "Matches",
@@ -41,11 +41,6 @@ const navigationItems = [
     title: "Add Match",
     url: createPageUrl("AddMatch"),
     icon: Plus,
-  },
-  {
-    title: "GitHub Settings",
-    url: createPageUrl("GitHubSettings"),
-    icon: Github,
   },
 ];
 

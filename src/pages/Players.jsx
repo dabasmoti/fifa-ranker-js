@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Player } from "@/entities/Player.js";
+import { Season } from "@/entities/Season.js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,13 +20,16 @@ import {
   TrendingUp,
   Search,
   UserCheck,
-  UserX
+  UserX,
+  ChevronDown
 } from "lucide-react";
 import { format } from "date-fns";
 
 export default function Players() {
   const [players, setPlayers] = useState([]);
   const [filteredPlayers, setFilteredPlayers] = useState([]);
+  const [seasons, setSeasons] = useState([]);
+  const [selectedSeason, setSelectedSeason] = useState("all");
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
@@ -34,30 +38,90 @@ export default function Players() {
   const [success, setSuccess] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [showStats, setShowStats] = useState(true);
+  const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
 
   const [formData, setFormData] = useState({
     name: ""
   });
 
   useEffect(() => {
-    loadPlayers();
+    loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (seasons.length > 0) {
+      loadPlayers();
+    }
+  }, [selectedSeason, seasons]);
 
   useEffect(() => {
     filterPlayers();
   }, [players, searchTerm]);
 
-  const loadPlayers = async () => {
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showSeasonDropdown && !event.target.closest('.season-dropdown')) {
+        setShowSeasonDropdown(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showSeasonDropdown]);
+
+  const loadInitialData = async () => {
+    try {
+      const seasonsData = await Season.list();
+      setSeasons(seasonsData);
+      
+      // Set default to active season if exists, otherwise "all"
+      const activeSeason = seasonsData.find(s => s.is_active);
+      let initialSeasonId = "all";
+      if (activeSeason) {
+        initialSeasonId = activeSeason.id.toString();
+        setSelectedSeason(initialSeasonId);
+      }
+      
+      // Load players with the correct season ID
+      await loadPlayers(initialSeasonId);
+    } catch (error) {
+      console.error("Error loading initial data:", error);
+      setError("Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPlayers = async (seasonIdOverride = null) => {
     setLoading(true);
     try {
-      const playersData = await Player.getAllPlayersWithStats();
+      // Load players with their calculated statistics for the selected season
+      console.log('🔄 Loading players with statistics...');
+      const seasonToUse = seasonIdOverride !== null ? seasonIdOverride : selectedSeason;
+      const seasonId = seasonToUse === "all" ? null : parseInt(seasonToUse);
+      const playersData = await Player.getAllPlayersWithStats(seasonId);
       setPlayers(playersData);
+      console.log(`✅ Loaded ${playersData.length} players with statistics for season: ${seasonToUse}`);
     } catch (error) {
       console.error("Error loading players:", error);
       setError("Failed to load players");
     } finally {
       setLoading(false);
     }
+  };
+
+  const getSelectedSeasonName = () => {
+    if (selectedSeason === "all") return "All Time";
+    const season = seasons.find(s => s.id.toString() === selectedSeason);
+    return season ? season.name : "Unknown Season";
+  };
+
+  const handleRefresh = async () => {
+    console.log('🔄 Manually refreshing player data...');
+    await loadPlayers();
+    setSuccess("Player data refreshed!");
+    setTimeout(() => setSuccess(""), 2000);
   };
 
   const filterPlayers = () => {
@@ -187,6 +251,60 @@ export default function Players() {
           <p className="text-gray-600">Manage FIFA tournament players and view statistics</p>
         </div>
         <div className="flex gap-3 flex-wrap">
+          {/* Season Selector */}
+          <div className="relative season-dropdown">
+            <Button
+              variant="outline"
+              onClick={() => setShowSeasonDropdown(!showSeasonDropdown)}
+              className="flex items-center gap-2 min-w-[150px] justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                <span>{getSelectedSeasonName()}</span>
+              </div>
+              <ChevronDown className="w-4 h-4" />
+            </Button>
+            
+            {showSeasonDropdown && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-[200px]">
+                <div className="py-1">
+                  <button
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                      selectedSeason === "all" ? "bg-blue-50 text-blue-600" : ""
+                    }`}
+                    onClick={() => {
+                      setSelectedSeason("all");
+                      setShowSeasonDropdown(false);
+                    }}
+                  >
+                    🏆 All Time
+                  </button>
+                  {seasons.map((season) => (
+                    <button
+                      key={season.id}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        selectedSeason === season.id.toString() ? "bg-blue-50 text-blue-600" : ""
+                      }`}
+                      onClick={() => {
+                        setSelectedSeason(season.id.toString());
+                        setShowSeasonDropdown(false);
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{season.name}</span>
+                        {season.is_active && (
+                          <Badge variant="success" className="text-xs">Active</Badge>
+                        )}
+                        {season.is_locked && (
+                          <Badge variant="secondary" className="text-xs">Ended</Badge>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <Button 
             onClick={() => setShowAddForm(true)}
             className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg"
@@ -201,6 +319,14 @@ export default function Players() {
           >
             <Download className="w-5 h-5 mr-2" />
             Export
+          </Button>
+          <Button 
+            onClick={handleRefresh}
+            variant="outline"
+            className="border-purple-600 text-purple-600 hover:bg-purple-50"
+          >
+            <TrendingUp className="w-5 h-5 mr-2" />
+            Refresh
           </Button>
           <div className="relative">
             <Button 

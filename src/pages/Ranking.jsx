@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Player } from "@/entities/Player.js";
+import { Season } from "@/entities/Season.js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,11 @@ import {
   Target, 
   TrendingUp,
   Grid3X3,
-  List
+  List,
+  Upload,
+  Cloud,
+  Calendar,
+  ChevronDown
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
@@ -18,24 +23,74 @@ import { createPageUrl } from "@/utils/createPageUrl.js";
 export default function Rankings() {
   const navigate = useNavigate();
   const [players, setPlayers] = useState([]);
+  const [seasons, setSeasons] = useState([]);
+  const [selectedSeason, setSelectedSeason] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState("table"); // "table" or "cards"
+  const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
 
   useEffect(() => {
-    loadPlayers();
+    loadInitialData();
   }, []);
 
-  const loadPlayers = async () => {
+  useEffect(() => {
+    if (seasons.length > 0) {
+      loadPlayers();
+    }
+  }, [selectedSeason, seasons]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showSeasonDropdown && !event.target.closest('.season-dropdown')) {
+        setShowSeasonDropdown(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showSeasonDropdown]);
+
+  const loadInitialData = async () => {
     try {
-      const playersData = await Player.getAllPlayersWithStats();
+      const seasonsData = await Season.list();
+      setSeasons(seasonsData);
+      
+      // Set default to active season if exists, otherwise "all"
+      const activeSeason = seasonsData.find(s => s.is_active);
+      let initialSeasonId = "all";
+      if (activeSeason) {
+        initialSeasonId = activeSeason.id.toString();
+        setSelectedSeason(initialSeasonId);
+      }
+      
+      // Load players with the correct season ID
+      await loadPlayers(initialSeasonId);
+    } catch (error) {
+      console.error("Error loading initial data:", error);
+      setError("Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPlayers = async (seasonIdOverride = null) => {
+    try {
+      const seasonToUse = seasonIdOverride !== null ? seasonIdOverride : selectedSeason;
+      const seasonId = seasonToUse === "all" ? null : parseInt(seasonToUse);
+      const playersData = await Player.getAllPlayersWithStats(seasonId);
       setPlayers(playersData);
     } catch (error) {
       console.error("Error loading players:", error);
       setError("Failed to load rankings");
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const getSelectedSeasonName = () => {
+    if (selectedSeason === "all") return "All Time";
+    const season = seasons.find(s => s.id.toString() === selectedSeason);
+    return season ? season.name : "Unknown Season";
   };
 
   if (loading) {
@@ -52,7 +107,7 @@ export default function Rankings() {
   const stats = {
     totalPlayers: players.length,
     activePlayers: players.filter(p => p.matches_played > 0).length,
-    totalMatches: players.reduce((sum, p) => sum + p.matches_played, 0) / 2, // Divide by 2 since each match involves 2 players
+    totalMatches: players.reduce((sum, p) => sum + p.matches_played, 0) / 4, // Divide by 4 since each match involves 4 players (2v2)
     avgSuccessRate: players.length > 0 ? 
       (players.reduce((sum, p) => sum + parseFloat(p.success_percentage), 0) / players.length).toFixed(1) : 0
   };
@@ -195,11 +250,92 @@ export default function Rankings() {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Player Rankings</h1>
-        <p className="text-gray-600">Track FIFA player performance and success rates</p>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Player Rankings</h1>
+          <p className="text-gray-500 mt-1">
+            Track FIFA player performance and success rates
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Season Selector */}
+          <div className="relative season-dropdown">
+            <Button
+              variant="outline"
+              onClick={() => setShowSeasonDropdown(!showSeasonDropdown)}
+              className="flex items-center gap-2 min-w-[150px] justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                <span>{getSelectedSeasonName()}</span>
+              </div>
+              <ChevronDown className="w-4 h-4" />
+            </Button>
+            
+            {showSeasonDropdown && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-[200px]">
+                <div className="py-1">
+                  <button
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                      selectedSeason === "all" ? "bg-blue-50 text-blue-600" : ""
+                    }`}
+                    onClick={() => {
+                      setSelectedSeason("all");
+                      setShowSeasonDropdown(false);
+                    }}
+                  >
+                    🏆 All Time
+                  </button>
+                  {seasons.map((season) => (
+                    <button
+                      key={season.id}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        selectedSeason === season.id.toString() ? "bg-blue-50 text-blue-600" : ""
+                      }`}
+                      onClick={() => {
+                        setSelectedSeason(season.id.toString());
+                        setShowSeasonDropdown(false);
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{season.name}</span>
+                        {season.is_active && (
+                          <Badge variant="success" className="text-xs">Active</Badge>
+                        )}
+                        {season.is_locked && (
+                          <Badge variant="secondary" className="text-xs">Ended</Badge>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <Button
+            variant={viewMode === 'table' ? 'secondary' : 'outline'}
+            onClick={() => setViewMode('table')}
+          >
+            <List className="w-4 h-4 mr-2" />
+            Table
+          </Button>
+          <Button
+            variant={viewMode === 'cards' ? 'secondary' : 'outline'}
+            onClick={() => setViewMode('cards')}
+          >
+            <Grid3X3 className="w-4 h-4 mr-2" />
+            Cards
+          </Button>
+        </div>
       </div>
+
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">
+          <strong className="font-bold">Error!</strong>
+          <span className="block sm:inline"> {error}</span>
+        </div>
+      )}
 
       {/* Statistics Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -246,15 +382,6 @@ export default function Rankings() {
         </Card>
       </div>
 
-      {/* Error Display */}
-      {error && (
-        <Card className="mb-6 bg-red-50 border-red-200">
-          <CardContent className="p-4">
-            <p className="text-red-800">{error}</p>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Leaderboard Section */}
       {players.length === 0 ? (
         <Card>
@@ -285,29 +412,6 @@ export default function Rankings() {
         </Card>
       ) : (
         <>
-          {/* View Toggle and Header */}
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Leaderboard</h2>
-            <div className="flex gap-2">
-              <Button
-                variant={viewMode === "cards" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("cards")}
-                className="p-2"
-              >
-                <Grid3X3 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === "table" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("table")}
-                className="p-2"
-              >
-                <List className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-
           {/* Render Current View */}
           {viewMode === "table" ? <TableView /> : <CardView />}
         </>
