@@ -16,16 +16,30 @@ const createTables = async () => {
     `;
     console.log('✅ Players table created');
 
-    // Create leagues table
+    // Create leagues table (repurposed as seasons)
     await sql`
       CREATE TABLE IF NOT EXISTS leagues (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         description TEXT,
+        start_date DATE DEFAULT CURRENT_DATE,
+        end_date DATE,
         is_active BOOLEAN DEFAULT FALSE,
+        is_locked BOOLEAN DEFAULT FALSE,
         created_date TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `;
+    
+    // Add new columns to existing leagues table if they don't exist
+    try {
+      await sql`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS start_date DATE DEFAULT CURRENT_DATE`;
+      await sql`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS end_date DATE`;
+      await sql`ALTER TABLE leagues ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE`;
+    } catch (error) {
+      // Columns might already exist, continue
+      console.log('Note: Some columns may already exist in leagues table');
+    }
+    
     console.log('✅ Leagues table created');
 
     // Create matches table
@@ -64,10 +78,10 @@ const createTables = async () => {
     const existingLeagues = await sql`SELECT COUNT(*) as count FROM leagues`;
     if (existingLeagues.rows[0].count === '0') {
       await sql`
-        INSERT INTO leagues (name, description, is_active)
-        VALUES ('Default League', 'Default league for FIFA matches', true)
+        INSERT INTO leagues (name, description, start_date, is_active, is_locked)
+        VALUES ('Default Season', 'Default season for FIFA matches', CURRENT_DATE, true, false)
       `;
-      console.log('✅ Default league created');
+      console.log('✅ Default season created');
     }
 
     console.log('🎉 Database setup complete!');

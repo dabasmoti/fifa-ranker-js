@@ -1,5 +1,5 @@
 import DatabaseService from '@/services/DatabaseService.js';
-import { League } from '@/entities/League.js';
+import { Season } from '@/entities/Season.js';
 
 export class Match {
   constructor(data) {
@@ -15,10 +15,10 @@ export class Match {
     this.created_date = data.created_date;
   }
 
-  static async list(sort = '-created_date', limit = null, leagueId = null) {
+  static async list(sort = '-created_date', limit = null, seasonId = null) {
     try {
       const dbService = new DatabaseService();
-      const matches = await dbService.getMatches({ sort, limit, leagueId });
+      const matches = await dbService.getMatches(sort, limit, seasonId);
       return matches;
     } catch (error) {
       console.error('Error loading matches:', error);
@@ -28,21 +28,21 @@ export class Match {
 
   static async create(data) {
     try {
-      // Get active league if no league_id provided
-      let leagueId = data.league_id;
-      if (!leagueId) {
-        const activeLeague = await League.getActive();
-        if (!activeLeague) {
-          // Create a default league if none exists
-          const defaultLeague = await League.createDefault();
-          leagueId = defaultLeague.id;
+      // Get active season if no league_id provided
+      let seasonId = data.league_id;
+      if (!seasonId) {
+        const activeSeason = await Season.getActive();
+        if (!activeSeason) {
+          // Create a default season if none exists
+          const defaultSeason = await Season.createDefault();
+          seasonId = defaultSeason.id;
         } else {
-          leagueId = activeLeague.id;
+          seasonId = activeSeason.id;
         }
       }
 
       const matchData = {
-        league_id: leagueId,
+        league_id: seasonId,
         team1_player1: data.team1_player1,
         team1_player2: data.team1_player2,
         team2_player1: data.team2_player1,
@@ -111,39 +111,39 @@ export class Match {
   }
 
   /**
-   * Get matches for a specific league
+   * Get matches for a specific season
    */
-  static async getByLeague(leagueId, sort = '-created_date') {
-    return this.list(sort, null, leagueId);
+  static async getBySeason(seasonId, sort = '-created_date') {
+    return this.list(sort, null, seasonId);
   }
 
   /**
-   * Get matches for the active league
+   * Get matches for the active season
    */
-  static async getActiveLeagueMatches(sort = '-created_date') {
+  static async getActiveSeasonMatches(sort = '-created_date') {
     try {
-      const activeLeague = await League.getActive();
-      if (!activeLeague) {
+      const activeSeason = await Season.getActive();
+      if (!activeSeason) {
         return [];
       }
-      return this.getByLeague(activeLeague.id, sort);
+      return this.getBySeason(activeSeason.id, sort);
     } catch (error) {
-      console.error('Error getting active league matches:', error);
+      console.error('Error getting active season matches:', error);
       return [];
     }
   }
 
   /**
-   * Migrate matches from a league to another
+   * Migrate matches from a season to another
    */
-  static async migrateToLeague(matchIds, targetLeagueId) {
+  static async migrateToSeason(matchIds, targetSeasonId) {
     try {
       const dbService = new DatabaseService();
       let updatedCount = 0;
 
       for (const matchId of matchIds) {
         try {
-          await dbService.updateMatch(matchId, { league_id: targetLeagueId });
+          await dbService.updateMatch(matchId, { league_id: targetSeasonId });
           updatedCount++;
         } catch (error) {
           console.error(`Error migrating match ${matchId}:`, error);
@@ -152,17 +152,17 @@ export class Match {
 
       return updatedCount > 0;
     } catch (error) {
-      console.error('Error migrating matches to league:', error);
+      console.error('Error migrating matches to season:', error);
       throw error;
     }
   }
 
   /**
-   * Get match statistics for a league
+   * Get match statistics for a season
    */
-  static async getLeagueStats(leagueId) {
+  static async getSeasonStats(seasonId) {
     try {
-      const matches = await this.getByLeague(leagueId);
+      const matches = await this.getBySeason(seasonId);
       
       const stats = {
         total_matches: matches.length,
@@ -192,7 +192,7 @@ export class Match {
 
       return stats;
     } catch (error) {
-      console.error('Error calculating league stats:', error);
+      console.error('Error calculating season stats:', error);
       return {
         total_matches: 0,
         total_goals: 0,
@@ -206,12 +206,12 @@ export class Match {
   /**
    * Export matches to JSON
    */
-  static async exportToJson(leagueId = null, filename = null) {
+  static async exportToJson(seasonId = null, filename = null) {
     try {
-      const matches = leagueId ? await this.getByLeague(leagueId) : await this.list();
+      const matches = seasonId ? await this.getBySeason(seasonId) : await this.list();
       
       const exportFilename = filename || 
-        (leagueId ? `league_${leagueId}_matches.json` : 'all_matches.json');
+        (seasonId ? `season_${seasonId}_matches.json` : 'all_matches.json');
       
       // Create download link
       const dataStr = JSON.stringify(matches, null, 2);
@@ -235,7 +235,7 @@ export class Match {
   /**
    * Import matches from JSON file
    */
-  static async importFromJson(file, leagueId = null) {
+  static async importFromJson(file, seasonId = null) {
     try {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -244,15 +244,15 @@ export class Match {
           try {
             const importedMatches = JSON.parse(e.target.result);
             
-            // Get active league if no league specified
-            let targetLeagueId = leagueId;
-            if (!targetLeagueId) {
-              const activeLeague = await League.getActive();
-              if (!activeLeague) {
-                const defaultLeague = await League.createDefault();
-                targetLeagueId = defaultLeague.id;
+            // Get active season if no season specified
+            let targetSeasonId = seasonId;
+            if (!targetSeasonId) {
+              const activeSeason = await Season.getActive();
+              if (!activeSeason) {
+                const defaultSeason = await Season.createDefault();
+                targetSeasonId = defaultSeason.id;
               } else {
-                targetLeagueId = activeLeague.id;
+                targetSeasonId = activeSeason.id;
               }
             }
 
@@ -270,7 +270,7 @@ export class Match {
               }
 
               const matchData = {
-                league_id: targetLeagueId,
+                league_id: targetSeasonId,
                 team1_player1: match.team1_player1,
                 team1_player2: match.team1_player2,
                 team2_player1: match.team2_player1,

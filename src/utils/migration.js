@@ -73,7 +73,7 @@ export class MigrationService {
   /**
    * Migrate matches from localStorage to CSV
    */
-  static async migrateMatches(targetLeagueId = null) {
+  static async migrateMatches(targetSeasonId = null) {
     try {
       const legacyMatchesJson = localStorage.getItem('fifa-matches');
       if (!legacyMatchesJson) {
@@ -82,19 +82,19 @@ export class MigrationService {
 
       const legacyMatches = JSON.parse(legacyMatchesJson);
       
-      // Get or create target league
-      let leagueId = targetLeagueId;
-      if (!leagueId) {
-        const activeLeague = await League.getActive();
-        if (!activeLeague) {
-          const defaultLeague = await League.create({
-            name: 'Migrated Data League',
-            description: 'League created during data migration from localStorage',
+      // Get or create target season
+      let seasonId = targetSeasonId;
+      if (!seasonId) {
+        const activeSeason = await League.getActive();
+        if (!activeSeason) {
+          const defaultSeason = await League.create({
+            name: 'Migrated Data Season',
+            description: 'Season created during data migration from localStorage',
             is_active: true
           });
-          leagueId = defaultLeague.id;
+          seasonId = defaultSeason.id;
         } else {
-          leagueId = activeLeague.id;
+          seasonId = activeSeason.id;
         }
       }
 
@@ -113,7 +113,7 @@ export class MigrationService {
         // Convert legacy match format to new format
         const matchData = {
           id: legacyMatch.id,
-          league_id: leagueId,
+          league_id: seasonId,
           team1_player1: legacyMatch.team1_player1,
           team1_player2: legacyMatch.team1_player2,
           team2_player1: legacyMatch.team2_player1,
@@ -124,7 +124,7 @@ export class MigrationService {
           created_date: legacyMatch.created_date || legacyMatch.created_at || new Date().toISOString()
         };
 
-        // Add directly to avoid triggering league checks
+        // Add directly to avoid triggering season checks
         const allMatches = await Match.list();
         allMatches.push(matchData);
         const migrationService = new JsonService();
@@ -133,7 +133,7 @@ export class MigrationService {
         migrated++;
       }
 
-      return { migrated, skipped, total: legacyMatches.length, leagueId };
+      return { migrated, skipped, total: legacyMatches.length, seasonId };
     } catch (error) {
       console.error('Error migrating matches:', error);
       throw new Error('Failed to migrate matches');
@@ -169,7 +169,7 @@ export class MigrationService {
         message: 'Migration completed successfully',
         players: playerResult,
         matches: matchResult,
-        leagueId: matchResult.leagueId
+        seasonId: matchResult.seasonId
       };
     } catch (error) {
       console.error('Error during migration:', error);

@@ -101,14 +101,14 @@ class DatabaseService {
       // Leagues operations
       case 'leagues.list':
         const leagues = await sql`
-          SELECT id, name, description, is_active, created_date 
+          SELECT id, name, description, start_date, end_date, is_active, is_locked, created_date 
           FROM leagues 
           ORDER BY is_active DESC, created_date DESC
         `;
         return { success: true, data: leagues.rows };
 
       case 'leagues.create':
-        const { name: leagueName, description, is_active } = params;
+        const { name: leagueName, description, start_date, end_date, is_active, is_locked } = params;
         
         // If this league should be active, deactivate others
         if (is_active) {
@@ -116,15 +116,15 @@ class DatabaseService {
         }
         
         const newLeague = await sql`
-          INSERT INTO leagues (name, description, is_active) 
-          VALUES (${leagueName}, ${description}, ${is_active}) 
-          RETURNING id, name, description, is_active, created_date
+          INSERT INTO leagues (name, description, start_date, end_date, is_active, is_locked) 
+          VALUES (${leagueName}, ${description}, ${start_date}, ${end_date}, ${is_active}, ${is_locked || false}) 
+          RETURNING id, name, description, start_date, end_date, is_active, is_locked, created_date
         `;
         return { success: true, data: newLeague.rows[0] };
 
       case 'leagues.getActive':
         const activeLeague = await sql`
-          SELECT id, name, description, is_active, created_date 
+          SELECT id, name, description, start_date, end_date, is_active, is_locked, created_date 
           FROM leagues 
           WHERE is_active = true 
           LIMIT 1
@@ -139,13 +139,46 @@ class DatabaseService {
           UPDATE leagues 
           SET is_active = true 
           WHERE id = ${params.id} 
-          RETURNING id, name, description, is_active, created_date
+          RETURNING id, name, description, start_date, end_date, is_active, is_locked, created_date
         `;
         return { success: true, data: activatedLeague.rows[0] };
 
+      case 'leagues.update': {
+        const { id: seasonId, ...updateFields } = params;
+        
+        // Build dynamic update query
+        const setClause = Object.keys(updateFields)
+          .map((key, index) => `${key} = $${index + 2}`)
+          .join(', ');
+        
+        const values = [seasonId, ...Object.values(updateFields)];
+        
+        const updatedLeague = await sql.query(`
+          UPDATE leagues 
+          SET ${setClause}
+          WHERE id = $1 
+          RETURNING id, name, description, start_date, end_date, is_active, is_locked, created_date
+        `, values);
+        return { success: true, data: updatedLeague.rows[0] };
+      }
+
+      case 'leagues.endSeason':
+        // End season by setting end_date to today and locking it
+        const endedSeason = await sql`
+          UPDATE leagues 
+          SET end_date = CURRENT_DATE, is_locked = true, is_active = false
+          WHERE id = ${params.id} 
+          RETURNING id, name, description, start_date, end_date, is_active, is_locked, created_date
+        `;
+        return { success: true, data: endedSeason.rows[0] };
+
+      case 'leagues.delete':
+        await sql`DELETE FROM leagues WHERE id = ${params.id}`;
+        return { success: true };
+
       // Matches operations
-      case 'matches.list':
-        const { sort = '-created_date', limit, leagueId } = params;
+      case 'matches.list': {
+        const { sort = '-created_date', limit, seasonId } = params;
         
         let query = `
           SELECT id, league_id, team1_player1, team1_player2, 
@@ -155,9 +188,9 @@ class DatabaseService {
         `;
         
         const queryParams = [];
-        if (leagueId) {
+        if (seasonId) {
           query += ` WHERE league_id = $${queryParams.length + 1}`;
-          queryParams.push(leagueId);
+          queryParams.push(seasonId);
         }
         
         // Add sorting
@@ -179,6 +212,7 @@ class DatabaseService {
         
         const matches = await sql.query(query, queryParams);
         return { success: true, data: matches.rows };
+      }
 
       case 'matches.create':
         const matchData = params;
@@ -262,8 +296,8 @@ class DatabaseService {
     return result.data;
   }
 
-  async getMatches(options = {}) {
-    const result = await this.executeQuery('matches.list', options);
+  async getMatches(sort = '-created_date', limit = null, seasonId = null) {
+    const result = await this.executeQuery('matches.list', { sort, limit, seasonId });
     return result.data;
   }
 

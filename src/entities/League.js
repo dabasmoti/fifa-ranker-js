@@ -210,37 +210,37 @@ export class League {
   }
 
   /**
-   * Get league statistics
+   * Get season statistics
    */
-  static async getStats(leagueId) {
+  static async getStats(seasonId) {
     try {
       const { Match } = await import('@/entities/Match.js');
       const { Player } = await import('@/entities/Player.js');
       
       const [matches, players] = await Promise.all([
-        Match.getByLeague(leagueId),
+        Match.getBySeason(seasonId),
         Player.list()
       ]);
       
-      // Get unique players who played in this league
-      const leaguePlayerNames = new Set();
+      // Get unique players who played in this season
+      const seasonPlayerNames = new Set();
       matches.forEach(match => {
-        leaguePlayerNames.add(match.team1_player1);
-        leaguePlayerNames.add(match.team1_player2);
-        leaguePlayerNames.add(match.team2_player1);
-        leaguePlayerNames.add(match.team2_player2);
+        seasonPlayerNames.add(match.team1_player1);
+        seasonPlayerNames.add(match.team1_player2);
+        seasonPlayerNames.add(match.team2_player1);
+        seasonPlayerNames.add(match.team2_player2);
       });
       
       return {
         total_matches: matches.length,
-        total_players: leaguePlayerNames.size,
+        total_players: seasonPlayerNames.size,
         date_range: matches.length > 0 ? {
           start: Math.min(...matches.map(m => new Date(m.match_date))),
           end: Math.max(...matches.map(m => new Date(m.match_date)))
         } : null
       };
     } catch (error) {
-      console.error('Error calculating league stats:', error);
+      console.error('Error calculating season stats:', error);
       return {
         total_matches: 0,
         total_players: 0,
@@ -250,21 +250,21 @@ export class League {
   }
 
   /**
-   * Export league data including matches and player stats
+   * Export season data including matches and player stats
    */
-  static async exportLeagueData(leagueId) {
+  static async exportSeasonData(seasonId) {
     try {
       const { Match } = await import('@/entities/Match.js');
-      const league = await this.findById(leagueId);
-      const leagueMatches = await Match.getByLeague(leagueId);
+      const season = await this.findById(seasonId);
+      const seasonMatches = await Match.getBySeason(seasonId);
       
-      if (!league) {
-        throw new Error('League not found');
+      if (!season) {
+        throw new Error('Season not found');
       }
       
       // Create download link
-      const filename = `${league.name.replace(/[^a-zA-Z0-9]/g, '_')}_matches.json`;
-      const dataStr = JSON.stringify(leagueMatches, null, 2);
+      const filename = `${season.name.replace(/[^a-zA-Z0-9]/g, '_')}_matches.json`;
+      const dataStr = JSON.stringify(seasonMatches, null, 2);
       const dataBlob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(dataBlob);
       

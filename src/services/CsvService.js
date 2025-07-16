@@ -183,7 +183,7 @@ class CsvService {
    * Save matches data with automatic blob sync
    */
   async saveMatches(matches) {
-    const headers = ['id', 'date', 'homeTeam', 'awayTeam', 'homeScore', 'awayScore', 'result', 'leagueId'];
+    const headers = ['id', 'date', 'homeTeam', 'awayTeam', 'homeScore', 'awayScore', 'result', 'seasonId'];
     return await this.saveToBlob('matches', matches, headers);
   }
 
@@ -191,7 +191,7 @@ class CsvService {
    * Load matches data
    */
   async loadMatches() {
-    const headers = ['id', 'date', 'homeTeam', 'awayTeam', 'homeScore', 'awayScore', 'result', 'leagueId'];
+    const headers = ['id', 'date', 'homeTeam', 'awayTeam', 'homeScore', 'awayScore', 'result', 'seasonId'];
     return await this.loadFromBlob('matches', headers);
   }
 

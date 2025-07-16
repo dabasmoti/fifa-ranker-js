@@ -97,13 +97,13 @@ export class Player {
   }
 
   /**
-   * Get player statistics for a specific league
+   * Get player statistics for a specific season
    */
-  static async getPlayerStats(playerName, leagueId = null) {
+  static async getPlayerStats(playerName, seasonId = null) {
     try {
       const { Match } = await import('@/entities/Match.js');
-      const matches = leagueId ? 
-        await Match.getByLeague(leagueId) : 
+      const matches = seasonId ? 
+        await Match.getBySeason(seasonId) : 
         await Match.list();
 
       const playerMatches = matches.filter(match => 
@@ -165,14 +165,14 @@ export class Player {
   }
 
   /**
-   * Get all players with their statistics for a league
+   * Get all players with their statistics for a season
    */
-  static async getAllPlayersWithStats(leagueId = null) {
+  static async getAllPlayersWithStats(seasonId = null) {
     try {
       const players = await this.list();
       const playersWithStats = await Promise.all(
         players.map(async (player) => {
-          const stats = await this.getPlayerStats(player.name, leagueId);
+          const stats = await this.getPlayerStats(player.name, seasonId);
           return {
             ...player,
             ...stats
@@ -238,14 +238,14 @@ export class Player {
   /**
    * Get active players (players who have played in recent matches)
    */
-  static async getActivePlayers(leagueId = null, daysSince = 30) {
+  static async getActivePlayers(seasonId = null, daysSince = 30) {
     try {
       const { Match } = await import('@/entities/Match.js');
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysSince);
 
-      const matches = leagueId ? 
-        await Match.getByLeague(leagueId) : 
+      const matches = seasonId ? 
+        await Match.getBySeason(seasonId) : 
         await Match.list();
 
       const recentMatches = matches.filter(match => 
