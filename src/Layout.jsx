@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
-import { Users, Trophy, Plus, Target, Menu, Calendar, CalendarDays } from "lucide-react";
+import { Users, Trophy, Plus, Target, Menu, Calendar, CalendarDays, Upload } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -41,6 +41,11 @@ const navigationItems = [
     title: "Add Match",
     url: createPageUrl("AddMatch"),
     icon: Plus,
+  },
+  {
+    title: "CSV Upload",
+    url: createPageUrl("CsvUpload"),
+    icon: Upload,
   },
 ];
 

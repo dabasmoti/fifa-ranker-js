@@ -158,7 +158,7 @@ async function ensureMigrationSeason() {
   const migrationSeason = await sql`
     INSERT INTO leagues (name, description, start_date, is_active, created_date)
     VALUES (
-      'Migration Season 2025',
+      'BananaMonkey-2025',
       'Imported data from previous system',
       '2025-07-01',
       true,

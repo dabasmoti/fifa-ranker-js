@@ -7,6 +7,7 @@ import AddMatch from '@/pages/AddMatch.jsx';
 import Matches from '@/pages/Matches.jsx';
 import Rankings from '@/pages/Ranking.jsx';
 import Seasons from '@/pages/Seasons.jsx';
+import CsvUpload from '@/pages/CsvUpload.jsx';
 import { createPageUrl } from '@/utils/createPageUrl.js';
 
 // Simple test components that we know work
@@ -23,6 +24,7 @@ function App() {
         <Route path={createPageUrl('Seasons')} element={<Seasons />} />
         <Route path={createPageUrl('Matches')} element={<Matches />} />
         <Route path={createPageUrl('AddMatch')} element={<AddMatch />} />
+        <Route path={createPageUrl('CsvUpload')} element={<CsvUpload />} />
       </Routes>
     </Layout>
   );
