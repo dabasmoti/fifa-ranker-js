@@ -1,0 +1,6 @@
+team1_player1,team1_player2,team2_player1,team2_player2,team1_score,team2_score,date
+Moti,Uri,Asaf,Chen,2,1,2025-07-06
+Uri,Baki,Nir,Moti,1,3,2025-07-07
+Asaf,Chen,Moti,Uri,0,2,2025-07-08
+Chen,Nir,Baki,Asaf,2,2,2025-07-09
+Baki,Moti,Uri,Chen,1,0,2025-07-10 

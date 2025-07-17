@@ -77,39 +77,70 @@ export default function CsvUpload() {
 
   const parseCsvData = (csvText) => {
     const lines = csvText.trim().split('\n');
+    
     if (lines.length < 2) {
       throw new Error('CSV file must have at least a header and one data row');
     }
 
-    const headers = lines[0].split(',').map(h => h.trim());
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
     const matches = [];
 
-    // Validate headers
-    const expectedHeaders = ['team1_player1', 'team1_player2', 'team2_player1', 'team2_player2', 'team1_score', 'team2_score', 'date'];
-    const hasValidHeaders = expectedHeaders.every(header => 
-      headers.some(h => h.toLowerCase().includes(header.toLowerCase().replace('_', '')))
-    );
+    // More flexible header validation - check for exact matches or close variations
+    const expectedHeaders = [
+      ['team1_player1', 'team1player1', 'team1 player1'],
+      ['team1_player2', 'team1player2', 'team1 player2'], 
+      ['team2_player1', 'team2player1', 'team2 player1'],
+      ['team2_player2', 'team2player2', 'team2 player2'],
+      ['team1_score', 'team1score', 'team1 score'],
+      ['team2_score', 'team2score', 'team2 score'],
+      ['date', 'match_date', 'matchdate']
+    ];
 
-    if (!hasValidHeaders) {
-      throw new Error(`CSV headers should include: ${expectedHeaders.join(', ')}`);
+    const headerMapping = {};
+    const missingHeaders = [];
+
+    expectedHeaders.forEach((variations, index) => {
+      const headerNames = ['team1_player1', 'team1_player2', 'team2_player1', 'team2_player2', 'team1_score', 'team2_score', 'date'];
+      const fieldName = headerNames[index];
+      
+      let found = false;
+      for (const variation of variations) {
+        const headerIndex = headers.findIndex(h => h === variation);
+        if (headerIndex !== -1) {
+          headerMapping[fieldName] = headerIndex;
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) {
+        missingHeaders.push(fieldName);
+      }
+    });
+
+    if (missingHeaders.length > 0) {
+      throw new Error(`CSV headers are missing or don't match expected format. 
+Found headers: ${headers.join(', ')}
+Missing/incorrect: ${missingHeaders.join(', ')}
+Expected headers should include: team1_player1, team1_player2, team2_player1, team2_player2, team1_score, team2_score, date`);
     }
 
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.trim());
       
-      if (values.length < 7) {
-        console.warn(`Skipping line ${i + 1}: insufficient data`);
+      if (values.length < Object.keys(headerMapping).length) {
+        console.warn(`Skipping line ${i + 1}: insufficient data (${values.length} columns, expected ${Object.keys(headerMapping).length})`);
         continue;
       }
 
       const match = {
-        team1_player1: values[0],
-        team1_player2: values[1],
-        team2_player1: values[2],
-        team2_player2: values[3],
-        team1_score: parseInt(values[4]),
-        team2_score: parseInt(values[5]),
-        match_date: values[6]
+        team1_player1: values[headerMapping.team1_player1],
+        team1_player2: values[headerMapping.team1_player2],
+        team2_player1: values[headerMapping.team2_player1],
+        team2_player2: values[headerMapping.team2_player2],
+        team1_score: parseInt(values[headerMapping.team1_score]),
+        team2_score: parseInt(values[headerMapping.team2_score]),
+        match_date: values[headerMapping.date]
       };
 
       // Validate the match data
