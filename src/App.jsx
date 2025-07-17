@@ -17,7 +17,7 @@ function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Navigate to={createPageUrl('Players')} replace />} />
+        <Route path="/" element={<Navigate to={createPageUrl('Rankings')} replace />} />
         <Route path={createPageUrl('Rankings')} element={<Rankings />} />
         <Route path={createPageUrl('Players')} element={<Players />} />
         <Route path={createPageUrl('Seasons')} element={<Seasons />} />
