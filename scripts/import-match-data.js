@@ -6,9 +6,11 @@
  */
 
 import { sql } from '@vercel/postgres';
-import { Player } from '../src/entities/Player.js';
-import { Season } from '../src/entities/Season.js';
-import { Match } from '../src/entities/Match.js';
+
+// We'll import these dynamically to avoid alias issues
+// import { Player } from '../src/entities/Player.js';
+// import { Season } from '../src/entities/Season.js';
+// import { Match } from '../src/entities/Match.js';
 
 // Your match data
 const matchData = `team1_player1,team1_player2,team2_player1,team2_player2,team1_score,team2_score,date
@@ -104,18 +106,27 @@ async function ensurePlayersExist(playerNames) {
 
   for (const playerName of playerNames) {
     try {
-      // Try to create the player
-      const player = await Player.create({ name: playerName });
-      createdPlayers.push(player);
-      console.log(`✅ Created player: ${playerName}`);
-    } catch (error) {
-      if (error.message.includes('already exists')) {
+      // Check if player exists
+      const existingPlayer = await sql`
+        SELECT id FROM players WHERE name = ${playerName}
+      `;
+      
+      if (existingPlayer.rows.length > 0) {
         existingPlayers.push(playerName);
         console.log(`📋 Player already exists: ${playerName}`);
       } else {
-        console.error(`❌ Failed to create player ${playerName}:`, error.message);
-        throw error;
+        // Create the player
+        const newPlayer = await sql`
+          INSERT INTO players (name, created_date)
+          VALUES (${playerName}, NOW())
+          RETURNING id, name
+        `;
+        createdPlayers.push(newPlayer.rows[0]);
+        console.log(`✅ Created player: ${playerName}`);
       }
+    } catch (error) {
+      console.error(`❌ Failed to check/create player ${playerName}:`, error.message);
+      throw error;
     }
   }
 
@@ -132,24 +143,33 @@ async function ensureMigrationSeason() {
   console.log('🏆 Setting up migration season...');
   
   // First, check if there's an active season
-  let activeSeason = await Season.getActive();
+  const activeSeasons = await sql`
+    SELECT id, name, description FROM leagues WHERE is_active = true LIMIT 1
+  `;
   
-  if (activeSeason) {
+  if (activeSeasons.rows.length > 0) {
+    const activeSeason = activeSeasons.rows[0];
     console.log(`✅ Using existing active season: ${activeSeason.name}`);
     return activeSeason;
   }
 
   // Create a new season for the migration
   console.log('🆕 No active season found, creating migration season...');
-  const migrationSeason = await Season.create({
-    name: 'Migration Season 2025',
-    description: 'Imported data from previous system',
-    start_date: '2025-07-01',
-    is_active: true
-  });
+  const migrationSeason = await sql`
+    INSERT INTO leagues (name, description, start_date, is_active, created_date)
+    VALUES (
+      'Migration Season 2025',
+      'Imported data from previous system',
+      '2025-07-01',
+      true,
+      NOW()
+    )
+    RETURNING id, name, description
+  `;
 
-  console.log(`✅ Created migration season: ${migrationSeason.name}\n`);
-  return migrationSeason;
+  const season = migrationSeason.rows[0];
+  console.log(`✅ Created migration season: ${season.name}\n`);
+  return season;
 }
 
 /**
@@ -173,16 +193,17 @@ async function importMatches(matches, seasonId) {
       }
 
       // Create the match
-      await Match.create({
-        team1_player1: match.team1_player1,
-        team1_player2: match.team1_player2,
-        team2_player1: match.team2_player1,
-        team2_player2: match.team2_player2,
-        team1_score: match.team1_score,
-        team2_score: match.team2_score,
-        match_date: matchDate,
-        seasonId: seasonId
-      });
+      await sql`
+        INSERT INTO matches (
+          league_id, team1_player1, team1_player2, team2_player1, team2_player2,
+          team1_score, team2_score, match_date, created_date
+        )
+        VALUES (
+          ${seasonId}, ${match.team1_player1}, ${match.team1_player2}, 
+          ${match.team2_player1}, ${match.team2_player2},
+          ${match.team1_score}, ${match.team2_score}, ${matchDate}, NOW()
+        )
+      `;
 
       successCount++;
       
