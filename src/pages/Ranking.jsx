@@ -27,7 +27,7 @@ export default function Rankings() {
   const [selectedSeason, setSelectedSeason] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [viewMode, setViewMode] = useState("table"); // "table" or "cards"
+  const [viewMode, setViewMode] = useState("cards"); // "table" or "cards"
   const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
 
   useEffect(() => {
