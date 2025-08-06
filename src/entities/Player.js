@@ -165,6 +165,45 @@ export class Player {
   }
 
   /**
+   * Calculate wins needed to reach first place and losses to drop to last place
+   */
+  static calculateRankingProjections(playersWithStats) {
+    if (playersWithStats.length === 0) return playersWithStats;
+
+    const firstPlacePoints = playersWithStats[0].total_points;
+    const lastPlacePoints = playersWithStats[playersWithStats.length - 1].total_points;
+
+    return playersWithStats.map((player, index) => {
+      const currentRank = index + 1;
+      
+      // Calculate wins needed to reach first place
+      let winsToFirst = 0;
+      if (currentRank > 1) {
+        const pointsNeeded = firstPlacePoints - player.total_points + 1; // +1 to overtake
+        winsToFirst = Math.max(0, Math.ceil(pointsNeeded / 3));
+      }
+      
+      // Calculate losses to drop to last place
+      let lossesToLast = 0;
+      if (currentRank < playersWithStats.length && playersWithStats.length > 1) {
+        const pointsCanLose = player.total_points - lastPlacePoints;
+        // Since losses give 0 points, we need to see how many losses would let others catch up
+        // This is a simplified calculation - in reality it depends on how others perform
+        lossesToLast = pointsCanLose > 0 ? Math.max(1, Math.floor(pointsCanLose / 3) + 1) : 1;
+      }
+
+      return {
+        ...player,
+        current_rank: currentRank,
+        wins_to_first: winsToFirst,
+        losses_to_last: lossesToLast,
+        is_first_place: currentRank === 1,
+        is_last_place: currentRank === playersWithStats.length
+      };
+    });
+  }
+
+  /**
    * Get all players with their statistics for a season
    */
   static async getAllPlayersWithStats(seasonId = null) {
@@ -188,7 +227,10 @@ export class Player {
         return b.total_points - a.total_points;
       });
 
-      return playersWithStats;
+      // Add ranking projections
+      const playersWithProjections = this.calculateRankingProjections(playersWithStats);
+
+      return playersWithProjections;
     } catch (error) {
       console.error('Error getting players with stats:', error);
       return [];

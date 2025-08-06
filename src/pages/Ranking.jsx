@@ -15,7 +15,10 @@ import {
   Upload,
   Cloud,
   Calendar,
-  ChevronDown
+  ChevronDown,
+  TrendingUp as ArrowUp,
+  TrendingDown as ArrowDown,
+  ArrowRight
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils/createPageUrl.js";
@@ -134,6 +137,8 @@ export default function Rankings() {
                 <th className="text-left py-3 px-4 font-medium text-gray-600 text-sm">W</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600 text-sm">D</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600 text-sm">L</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-600 text-sm">WINS TO 1ST</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-600 text-sm">LOSSES TO LAST</th>
               </tr>
             </thead>
             <tbody>
@@ -179,6 +184,32 @@ export default function Rankings() {
                   </td>
                   <td className="py-4 px-4">
                     <span className="text-red-600 font-medium">{player.losses}</span>
+                  </td>
+                  <td className="py-4 px-4 text-center">
+                    {player.is_first_place ? (
+                      <div className="flex items-center justify-center gap-1">
+                        <Trophy className="w-4 h-4 text-yellow-500" />
+                        <span className="text-sm text-gray-500">Crown</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-1">
+                        <ArrowUp className="w-4 h-4 text-green-600" />
+                        <span className="font-medium text-green-700">{player.wins_to_first}</span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-4 px-4 text-center">
+                    {player.is_last_place ? (
+                      <div className="flex items-center justify-center gap-1">
+                        <ArrowDown className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-500">Bottom</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-1">
+                        <ArrowDown className="w-4 h-4 text-red-600" />
+                        <span className="font-medium text-red-700">{player.losses_to_last}</span>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -236,11 +267,47 @@ export default function Rankings() {
               </span>
             </div>
 
-            <div className="w-full bg-gray-200 rounded-full h-3">
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
               <div 
                 className="bg-blue-600 h-3 rounded-full transition-all duration-300" 
                 style={{ width: `${player.success_percentage}%` }}
               ></div>
+            </div>
+
+            {/* Ranking Projections */}
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+              <div className="text-center">
+                {player.is_first_place ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <Trophy className="w-5 h-5 text-yellow-500" />
+                    <span className="text-sm font-medium text-gray-700">First Place!</span>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <ArrowUp className="w-4 h-4 text-green-600" />
+                      <span className="text-lg font-bold text-green-700">{player.wins_to_first}</span>
+                    </div>
+                    <div className="text-xs text-gray-500">wins to 1st</div>
+                  </div>
+                )}
+              </div>
+              <div className="text-center">
+                {player.is_last_place ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <ArrowDown className="w-5 h-5 text-gray-400" />
+                    <span className="text-sm font-medium text-gray-500">Last Place</span>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <ArrowDown className="w-4 h-4 text-red-600" />
+                      <span className="text-lg font-bold text-red-700">{player.losses_to_last}</span>
+                    </div>
+                    <div className="text-xs text-gray-500">losses to last</div>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
