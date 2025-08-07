@@ -187,20 +187,28 @@ export class Player {
         const pointsNeeded = firstPlacePoints - player.total_points + 1; // +1 to overtake
         let baseWinsNeeded = Math.ceil(pointsNeeded / 3);
         
-        // Adjust based on games played relative to first place player
+        // More realistic calculation: consider current win rate for remaining games
         const firstPlaceGames = playersWithStats[0].matches_played;
         const gamesDifference = firstPlaceGames - playerGames;
         
-        // If player has played significantly fewer games, they have an advantage
-        // Each additional game could be a win (3 points)
         if (gamesDifference > 0) {
-          // Player has room to catch up with fewer wins due to having more potential games
-          const potentialFromExtraGames = gamesDifference * 3;
-          const adjustedPointsNeeded = Math.max(0, pointsNeeded - potentialFromExtraGames);
+          // Player has fewer games - factor in their current success rate
+          const currentWinRate = playerGames > 0 ? player.wins / playerGames : 0.5; // Default 50% if no games
+          const expectedPointsFromRemainingGames = gamesDifference * currentWinRate * 3;
+          
+          // Adjust points needed by realistic expectation from remaining games
+          const adjustedPointsNeeded = Math.max(0, pointsNeeded - expectedPointsFromRemainingGames);
           baseWinsNeeded = Math.ceil(adjustedPointsNeeded / 3);
+          
+          // If they still need more wins than remaining games, they need to improve their rate
+          const remainingGamesAfterCatchup = Math.max(0, gamesDifference - baseWinsNeeded);
+          if (baseWinsNeeded > gamesDifference) {
+            // Need more wins than remaining games - must win additional games beyond catch-up
+            baseWinsNeeded = baseWinsNeeded - remainingGamesAfterCatchup;
+          }
         }
         
-        winsToFirst = Math.max(0, baseWinsNeeded);
+        winsToFirst = Math.max(1, baseWinsNeeded); // Minimum 1 win needed if not in first
       }
       
       // Calculate losses to drop to last place
@@ -224,6 +232,13 @@ export class Player {
         lossesToLast = baseLossesToLast;
       }
 
+      // Calculate how much 1 win contributes to success percentage
+      const currentSuccessPercentage = parseFloat(player.success_percentage);
+      const totalPossiblePoints = player.max_possible_points + 3; // +3 for one more win
+      const newTotalPoints = player.total_points + 3; // +3 points from the win
+      const newSuccessPercentage = (newTotalPoints / totalPossiblePoints) * 100;
+      const winContributionPercent = newSuccessPercentage - currentSuccessPercentage;
+
       return {
         ...player,
         current_rank: currentRank,
@@ -231,6 +246,8 @@ export class Player {
         losses_to_last: lossesToLast,
         is_first_place: currentRank === 1,
         is_last_place: currentRank === playersWithStats.length,
+        // Add win contribution percentage
+        win_contribution_percent: Number(winContributionPercent.toFixed(2)),
         // Add volatility indicator for debugging
         position_volatility: avgGamesPlayed / Math.max(playerGames, 1)
       };

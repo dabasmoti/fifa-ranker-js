@@ -139,6 +139,7 @@ export default function Rankings() {
                 <th className="text-left py-3 px-4 font-medium text-gray-600 text-sm">L</th>
                 <th className="text-center py-3 px-4 font-medium text-gray-600 text-sm">WINS TO 1ST</th>
                 <th className="text-center py-3 px-4 font-medium text-gray-600 text-sm">LOSSES TO LAST</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-600 text-sm">WIN IMPACT</th>
               </tr>
             </thead>
             <tbody>
@@ -211,6 +212,11 @@ export default function Rankings() {
                       </div>
                     )}
                   </td>
+                  <td className="py-4 px-4 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <span className="text-sm text-purple-700 font-medium">+{player.win_contribution_percent}%</span>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -260,10 +266,15 @@ export default function Rankings() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 mb-2">
-              <Trophy className="w-4 h-4 text-gray-400" />
-              <span className="text-sm text-gray-600">
-                {player.total_points} / {player.matches_played * 3} points
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-gray-400" />
+                <span className="text-sm text-gray-600">
+                  {player.total_points} / {player.matches_played * 3} points
+                </span>
+              </div>
+              <span className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-1 rounded">
+                +{player.win_contribution_percent}% per win
               </span>
             </div>
 
