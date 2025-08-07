@@ -166,30 +166,62 @@ export class Player {
 
   /**
    * Calculate wins needed to reach first place and losses to drop to last place
+   * Accounts for games played - fewer games = more volatile position
    */
   static calculateRankingProjections(playersWithStats) {
     if (playersWithStats.length === 0) return playersWithStats;
 
     const firstPlacePoints = playersWithStats[0].total_points;
     const lastPlacePoints = playersWithStats[playersWithStats.length - 1].total_points;
+    
+    // Calculate average games played to understand activity levels
+    const avgGamesPlayed = playersWithStats.reduce((sum, p) => sum + p.matches_played, 0) / playersWithStats.length;
 
     return playersWithStats.map((player, index) => {
       const currentRank = index + 1;
+      const playerGames = player.matches_played;
       
       // Calculate wins needed to reach first place
       let winsToFirst = 0;
       if (currentRank > 1) {
         const pointsNeeded = firstPlacePoints - player.total_points + 1; // +1 to overtake
-        winsToFirst = Math.max(0, Math.ceil(pointsNeeded / 3));
+        let baseWinsNeeded = Math.ceil(pointsNeeded / 3);
+        
+        // Adjust based on games played relative to first place player
+        const firstPlaceGames = playersWithStats[0].matches_played;
+        const gamesDifference = firstPlaceGames - playerGames;
+        
+        // If player has played significantly fewer games, they have an advantage
+        // Each additional game could be a win (3 points)
+        if (gamesDifference > 0) {
+          // Player has room to catch up with fewer wins due to having more potential games
+          const potentialFromExtraGames = gamesDifference * 3;
+          const adjustedPointsNeeded = Math.max(0, pointsNeeded - potentialFromExtraGames);
+          baseWinsNeeded = Math.ceil(adjustedPointsNeeded / 3);
+        }
+        
+        winsToFirst = Math.max(0, baseWinsNeeded);
       }
       
       // Calculate losses to drop to last place
       let lossesToLast = 0;
       if (currentRank < playersWithStats.length && playersWithStats.length > 1) {
         const pointsCanLose = player.total_points - lastPlacePoints;
-        // Since losses give 0 points, we need to see how many losses would let others catch up
-        // This is a simplified calculation - in reality it depends on how others perform
-        lossesToLast = pointsCanLose > 0 ? Math.max(1, Math.floor(pointsCanLose / 3) + 1) : 1;
+        
+        // Base calculation: how many losses before others could catch up
+        let baseLossesToLast = pointsCanLose > 0 ? Math.max(1, Math.floor(pointsCanLose / 3) + 1) : 1;
+        
+        // Adjust based on volatility: fewer games = more volatile = easier to drop
+        const gameVolatility = avgGamesPlayed / Math.max(playerGames, 1);
+        if (gameVolatility > 1.5) {
+          // Player has played significantly fewer games than average - more volatile
+          baseLossesToLast = Math.max(1, Math.floor(baseLossesToLast * 0.7)); // Reduce by 30%
+        } else if (gameVolatility < 0.7) {
+          // Player has played significantly more games than average - more stable
+          baseLossesToLast = Math.ceil(baseLossesToLast * 1.3); // Increase by 30%
+        }
+        
+        lossesToLast = baseLossesToLast;
       }
 
       return {
@@ -198,7 +230,9 @@ export class Player {
         wins_to_first: winsToFirst,
         losses_to_last: lossesToLast,
         is_first_place: currentRank === 1,
-        is_last_place: currentRank === playersWithStats.length
+        is_last_place: currentRank === playersWithStats.length,
+        // Add volatility indicator for debugging
+        position_volatility: avgGamesPlayed / Math.max(playerGames, 1)
       };
     });
   }

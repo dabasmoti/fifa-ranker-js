@@ -39,7 +39,11 @@ class DatabaseService {
   async executeQuery(action, params = {}) {
     if (!this.isServerSide) {
       // Client-side: use API route
-      const response = await fetch('/api/database', {
+      // In development, use deployed API if local API is not available
+      const isDevelopment = window.location.hostname === 'localhost';
+      const apiUrl = isDevelopment ? 'https://fifa-ranker-js.vercel.app/api/database' : '/api/database';
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ...params })
@@ -98,8 +102,68 @@ class DatabaseService {
         await sql`DELETE FROM players WHERE id = ${params.id}`;
         return { success: true };
 
+      case 'players.stats':
+        const { playerName, seasonId } = params;
+        // Get matches for the player in the specific season
+        let matchQuery;
+        if (seasonId) {
+          matchQuery = sql`
+            SELECT * FROM matches 
+            WHERE league_id = ${seasonId}
+            AND (team1_player1 = ${playerName} OR team1_player2 = ${playerName} 
+                 OR team2_player1 = ${playerName} OR team2_player2 = ${playerName})
+            ORDER BY match_date DESC
+          `;
+        } else {
+          matchQuery = sql`
+            SELECT * FROM matches 
+            WHERE (team1_player1 = ${playerName} OR team1_player2 = ${playerName} 
+                   OR team2_player1 = ${playerName} OR team2_player2 = ${playerName})
+            ORDER BY match_date DESC
+          `;
+        }
+        
+        const playerMatches = await matchQuery;
+        
+        // Calculate stats
+        const stats = {
+          matches_played: playerMatches.rows.length,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          total_points: 0,
+          goals_for: 0,
+          goals_against: 0
+        };
+
+        playerMatches.rows.forEach(match => {
+          const isTeam1 = match.team1_player1 === playerName || match.team1_player2 === playerName;
+          const teamScore = isTeam1 ? match.team1_score : match.team2_score;
+          const opponentScore = isTeam1 ? match.team2_score : match.team1_score;
+
+          stats.goals_for += teamScore;
+          stats.goals_against += opponentScore;
+
+          if (teamScore > opponentScore) {
+            stats.wins++;
+            stats.total_points += 3;
+          } else if (teamScore === opponentScore) {
+            stats.draws++;
+            stats.total_points += 1;
+          } else {
+            stats.losses++;
+          }
+        });
+
+        stats.max_possible_points = stats.matches_played * 3;
+        stats.success_percentage = stats.max_possible_points > 0 ? 
+          ((stats.total_points / stats.max_possible_points) * 100).toFixed(1) : 0;
+
+        return { success: true, data: stats };
+
       // Leagues operations
       case 'leagues.list':
+      case 'seasons.list': // Alias for leagues.list
         const leagues = await sql`
           SELECT id, name, description, start_date, end_date, is_active, is_locked, created_date 
           FROM leagues 
